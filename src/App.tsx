@@ -13,7 +13,8 @@ import {
   Send, 
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -241,7 +242,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
                       <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
                     </div>
                     <button onClick={() => setContacts(prev => prev.filter((_, idx) => idx !== i))} className="text-error/50 hover:text-error transition-colors">
-                      <Delete className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </motion.div>
                 ))
