@@ -14,6 +14,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  WifiOff,
+  RefreshCcw,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -164,16 +166,19 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
     if (contacts.length === 0) return;
     setLoading(true);
     try {
+      // Save each contact one by one to the backend
       for (const contact of contacts) {
-        await fetch('/api/contacts', {
+        const response = await fetch('/api/contacts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, ...contact }),
+          body: JSON.stringify({ userId: user.id, name: contact.name, phone: contact.phone }),
         });
+        if (!response.ok) throw new Error(`Primary link failed for ${contact.name}`);
       }
+      
       onSetupComplete();
     } catch (err) {
-      console.error(err);
+      console.error('Setup sync failed:', err);
     } finally {
       setLoading(false);
     }
@@ -279,16 +284,19 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      await fetch('/api/alerts/send', {
+      const response = await fetch('/api/alerts/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, contacts: targets }),
       });
+      
+      if (!response.ok) throw new Error('Failed to dispatch alerts');
+      
       setStatus('SENT');
       // Delay before returning to calculator
       setTimeout(() => onCancel(), 3000);
     } catch (err) {
-      console.error(err);
+      console.error('Alert dispatch failed:', err);
       setStatus('IDLE');
     }
   }, [user.id, status, onCancel]);
@@ -414,8 +422,8 @@ const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
     }
 
     if (label === '=') {
-      // STRICT TRIGGER CONDITION
-      if (equation === '' && display === '911') {
+      // STRICT TRIGGER CONDITION: Only exactly '911' triggers the panel
+      if (equation === '' && display === '911' && label === '=') {
         onTrigger();
         setDisplay('0');
         return;
@@ -557,8 +565,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const fetchContacts = async (userId: string) => {
+    setLoading(true);
     try {
       const response = await fetch(`/api/contacts?userId=${userId}`);
+      if (!response.ok) throw new Error('Central Hub Unreachable');
       const data = await response.json();
       setContacts(data.contacts);
       if (data.contacts.length === 0) {
@@ -567,7 +577,9 @@ export default function App() {
         setStatus('STEALTH');
       }
     } catch (err) {
-      console.error(err);
+      console.error('Connection failure:', err);
+      // Stay on login or show error if already logged in
+      if (status !== 'AUTH') setStatus('AUTH');
     } finally {
       setLoading(false);
     }
