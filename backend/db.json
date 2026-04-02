@@ -1,33 +1,10 @@
 {
-  "users": [
-    {
-      "id": "1775130372088",
-      "email": "aanvic527@gmail.com",
-      "password": "aanvi"
-    },
-    {
-      "id": "d7a169cc-1c1a-42ba-94b6-6315426981ef",
-      "email": "test@test.com",
-      "password": "password"
-    }
-  ],
+  "users": [],
   "contacts": [
     {
-      "id": "1775130760096",
-      "userId": "1775130372088",
-      "name": "Janmejai",
-      "phone": "8126703360"
-    },
-    {
-      "id": "bdb37a97-92b4-4b49-af53-1495a19bfa58",
-      "userId": "6fab84df-8e2c-40aa-815d-f0f33f67e9d3",
-      "name": "janmejai ",
-      "phone": "+918126703360"
-    },
-    {
-      "id": "7f76501d-7945-4144-ac18-56d80f5df13f",
+      "id": "144cf9db-69a3-4374-9a59-cc76d6414cb3",
       "userId": "d7a169cc-1c1a-42ba-94b6-6315426981ef",
-      "name": "JANMEJAI",
+      "name": "Main Contact",
       "phone": "+918126703360"
     }
   ]
