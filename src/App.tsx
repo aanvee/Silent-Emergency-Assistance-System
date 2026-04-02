@@ -13,7 +13,8 @@ import {
   Send, 
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -241,7 +242,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
                       <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
                     </div>
                     <button onClick={() => setContacts(prev => prev.filter((_, idx) => idx !== i))} className="text-error/50 hover:text-error transition-colors">
-                      <Delete className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </motion.div>
                 ))
@@ -269,6 +270,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
   const [timeLeft, setTimeLeft] = useState(60);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [status, setStatus] = useState<'IDLE' | 'SENDING' | 'SENT'>('IDLE');
+  const [alertError, setAlertError] = useState('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const sendAlerts = useCallback(async (targets: Contact[]) => {
@@ -308,9 +310,12 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
   }, [contacts, sendAlerts]);
 
   const handleManualSend = () => {
-    const targets = selectedIds.length > 0 
-      ? contacts.filter(c => selectedIds.includes(c.id))
-      : contacts;
+    if (selectedIds.length === 0) {
+      setAlertError('Please select at least one contact to send manually');
+      return;
+    }
+    setAlertError('');
+    const targets = contacts.filter(c => selectedIds.includes(c.id));
     sendAlerts(targets);
   };
 
@@ -337,7 +342,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
 
         <div className="p-6 space-y-4">
           <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
-            Alerts will be dispatched to the selected contacts. If no selection is made, all members will be notified automatically.
+            Select the contacts you wish to alert immediately. If no selection is made before the timer runs out, ALL members will be notified automatically.
           </p>
           
           <div className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -362,6 +367,18 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
         </div>
 
         <div className="p-6 bg-surface-container-high border-t border-outline-variant/10 flex flex-col gap-3">
+          <AnimatePresence>
+            {alertError && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, height: 0 }} 
+                className="text-error text-center text-[10px] font-bold uppercase tracking-widest animate-pulse"
+              >
+                {alertError}
+              </motion.div>
+            )}
+          </AnimatePresence>
           <button 
             disabled={status !== 'IDLE'}
             onClick={handleManualSend}

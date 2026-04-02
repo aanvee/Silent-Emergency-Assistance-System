@@ -41,6 +41,24 @@ class AlertRequest(BaseModel):
     longitude: float
     message: str
 
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+class ContactRequest(BaseModel):
+    userId: str
+    name: str
+    phone: str
+
+class SendAlertsRequest(BaseModel):
+    userId: str
+    contacts: list
+
+import uuid
+# In-memory mock database for demo purposes
+users_db = {}      # email -> {"id": str, "email": str, "password": str}
+contacts_db = {}   # userId -> [{"id": str, "name": str, "phone": str}]
+
 def check_for_emergency(message: str) -> bool:
     """
     Simple NLP logic combining keyword detection and fallback checks.
@@ -86,6 +104,50 @@ def send_sms_alert(message_body: str):
 @app.get("/")
 async def root():
     return {"message": "Backend running"}
+
+@app.post("/api/auth/signup")
+async def signup(req: AuthRequest):
+    if req.email in users_db:
+        return {"error": "User already exists"}
+    user_id = str(uuid.uuid4())
+    users_db[req.email] = {"id": user_id, "email": req.email, "password": req.password}
+    contacts_db[user_id] = []
+    return {"user": {"id": user_id, "email": req.email}}
+
+@app.post("/api/auth/login")
+async def login(req: AuthRequest):
+    user = users_db.get(req.email)
+    if not user or user["password"] != req.password:
+        return {"error": "Invalid email or password"}
+    return {"user": {"id": user["id"], "email": user["email"]}}
+
+@app.post("/api/contacts")
+async def add_contact(req: ContactRequest):
+    if req.userId not in contacts_db:
+        contacts_db[req.userId] = []
+    new_contact = {"id": str(uuid.uuid4()), "name": req.name, "phone": req.phone}
+    contacts_db[req.userId].append(new_contact)
+    return {"status": "Contact added", "contact": new_contact}
+
+@app.get("/api/contacts")
+async def get_contacts(userId: str):
+    user_contacts = contacts_db.get(userId, [])
+    return {"contacts": user_contacts}
+
+@app.post("/api/alerts/send")
+async def send_manual_alerts(req: SendAlertsRequest):
+    # Sends an SMS alert to each target contact manually
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    for contact in req.contacts:
+        sms_body = (
+            f"🚨 SILENT EMERGENCY ALERT 🚨\n"
+            f"User ID: {req.userId}\n"
+            f"Message: Protocol V.911 Manual Trigger\n"
+            f"Recipient: {contact.get('name', 'Contact')}\n"
+            f"Time: {timestamp}"
+        )
+        send_sms_alert(sms_body)
+    return {"status": "Alerts Dispatched"}
 
 @app.post("/alert")
 async def handle_alert(alert: AlertRequest):
