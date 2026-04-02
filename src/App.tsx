@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Shield, 
-  EyeOff, 
-  Lock, 
-  Settings, 
-  TriangleAlert, 
-  UserPlus, 
-  ChevronRight, 
-  Mail, 
-  Phone, 
-  User, 
-  Send, 
+import {
+  Shield,
+  EyeOff,
+  Lock,
+  Settings,
+  TriangleAlert,
+  UserPlus,
+  ChevronRight,
+  Mail,
+  Phone,
+  User,
+  Send,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -31,6 +31,7 @@ interface UserSession {
 }
 
 // --- Components ---
+const API_BASE = 'http://127.0.0.1:8000';
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -43,18 +44,18 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await fetch(endpoint, {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      
+
       const data = await response.json();
       if (data.error) throw new Error(data.error);
-      
+
       localStorage.setItem('silent_session', JSON.stringify(data.user));
       onAuthSuccess(data.user);
     } catch (err: any) {
@@ -66,7 +67,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md glass-panel border border-outline-variant/10 p-8 shadow-2xl"
@@ -86,8 +87,8 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-              <input 
-                type="email" 
+              <input
+                type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -101,8 +102,8 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Access Cipher</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-              <input 
-                type="password" 
+              <input
+                type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -113,7 +114,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
           </div>
 
           {error && (
-            <motion.div 
+            <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               className="p-3 bg-error/10 border-l-4 border-error text-error text-xs flex items-center gap-2"
@@ -123,8 +124,8 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             </motion.div>
           )}
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full bg-primary py-4 text-on-primary text-xs font-black tracking-widest uppercase rounded-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
@@ -135,7 +136,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
         <p className="mt-8 text-center text-xs text-on-surface-variant">
           {isLogin ? "No operational record?" : "Already have access?"}{' '}
-          <button 
+          <button
             onClick={() => setIsLogin(!isLogin)}
             className="text-primary font-bold hover:underline"
           >
@@ -165,7 +166,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
     setLoading(true);
     try {
       for (const contact of contacts) {
-        await fetch('/api/contacts', {
+        await fetch(`${API_BASE}/api/contacts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, ...contact }),
@@ -181,7 +182,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-2xl bg-surface-container-low rounded-3xl overflow-hidden shadow-2xl border border-outline-variant/10"
@@ -197,7 +198,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
             <div className="space-y-4">
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-                <input 
+                <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant/20 rounded-xl py-3 px-12 text-sm outline-none focus:border-primary/50"
@@ -206,14 +207,14 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
               </div>
               <div className="relative">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-                <input 
+                <input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant/20 rounded-xl py-3 px-12 text-sm outline-none focus:border-primary/50"
                   placeholder="+1 (555) 000-0000"
                 />
               </div>
-              <button 
+              <button
                 onClick={handleAdd}
                 className="w-full py-3 bg-surface-container-highest text-primary text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-surface-bright transition-all"
               >
@@ -231,10 +232,10 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
                 </div>
               ) : (
                 contacts.map((c, i) => (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    key={i} 
+                    key={i}
                     className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/5 flex justify-between items-center"
                   >
                     <div>
@@ -252,7 +253,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
         </div>
 
         <div className="p-8 bg-surface-container-high border-t border-outline-variant/10">
-          <button 
+          <button
             onClick={handleSave}
             disabled={contacts.length === 0 || loading}
             className={`w-full py-4 text-xs font-black tracking-widest uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${contacts.length > 0 ? 'bg-primary text-on-primary hover:brightness-110 shadow-lg shadow-primary/10' : 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed'}`}
@@ -279,7 +280,8 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      await fetch('/api/alerts/send', {
+      console.log("Sending contacts:", targets);
+      await fetch(`${API_BASE}/api/alerts/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, contacts: targets }),
@@ -321,7 +323,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center bg-black/80 backdrop-blur-md p-4">
-      <motion.div 
+      <motion.div
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 100, opacity: 0 }}
@@ -344,10 +346,10 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
           <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
             Select the contacts you wish to alert immediately. If no selection is made before the timer runs out, ALL members will be notified automatically.
           </p>
-          
+
           <div className="space-y-2 max-h-[300px] overflow-y-auto">
             {contacts.map(c => (
-              <div 
+              <div
                 key={c.id}
                 onClick={() => setSelectedIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
                 className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${selectedIds.includes(c.id) ? 'bg-primary/10 border-primary' : 'bg-surface-container-high border-outline-variant/10 hover:border-primary/30'}`}
@@ -369,17 +371,17 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
         <div className="p-6 bg-surface-container-high border-t border-outline-variant/10 flex flex-col gap-3">
           <AnimatePresence>
             {alertError && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                exit={{ opacity: 0, height: 0 }} 
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, height: 0 }}
                 className="text-error text-center text-[10px] font-bold uppercase tracking-widest animate-pulse"
               >
                 {alertError}
               </motion.div>
             )}
           </AnimatePresence>
-          <button 
+          <button
             disabled={status !== 'IDLE'}
             onClick={handleManualSend}
             className="w-full py-4 bg-error text-on-error text-xs font-black tracking-widest uppercase rounded-2xl shadow-lg shadow-error/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -387,7 +389,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
             {status === 'SENDING' ? 'Dispatched Terminal...' : status === 'SENT' ? 'Alerts Confirmed' : 'Send Immediate Alert'}
             <Send className="w-4 h-4" />
           </button>
-          <button 
+          <button
             onClick={onCancel}
             disabled={status !== 'IDLE'}
             className="w-full py-3 text-on-surface-variant text-[10px] font-bold uppercase tracking-[0.2em] hover:text-on-surface transition-colors"
@@ -404,7 +406,7 @@ const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
   const [shouldResetDisplay, setShouldResetDisplay] = useState(false);
-  
+
   const handleAction = useCallback((label: string) => {
     if (label === 'C') {
       setDisplay('0');
@@ -512,7 +514,7 @@ const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md bg-surface-container-low rounded-[2rem] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.5)] border border-outline-variant/5"
@@ -530,7 +532,7 @@ const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
         </div>
         <div className="grid grid-cols-4 bg-surface-container-high/30">
           {buttons.map((btn, i) => (
-            <button 
+            <button
               key={i}
               onClick={() => handleAction(btn.label)}
               className={`
@@ -558,8 +560,9 @@ export default function App() {
 
   const fetchContacts = async (userId: string) => {
     try {
-      const response = await fetch(`/api/contacts?userId=${userId}`);
+      const response = await fetch(`${API_BASE}/api/contacts?userId=${userId}`);
       const data = await response.json();
+      console.log("Loaded contacts:", data.contacts);
       setContacts(data.contacts);
       if (data.contacts.length === 0) {
         setStatus('SETUP');
@@ -587,7 +590,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <motion.div 
+        <motion.div
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
           className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full shadow-lg shadow-primary/20"
@@ -605,7 +608,7 @@ export default function App() {
             fetchContacts(u.id);
           }} />
         )}
-        
+
         {status === 'SETUP' && user && (
           <SetupUI user={user} onSetupComplete={() => fetchContacts(user.id)} />
         )}
@@ -614,10 +617,10 @@ export default function App() {
           <>
             <Calculator onTrigger={() => setStatus('EMERGENCY')} />
             {status === 'EMERGENCY' && user && (
-              <EmergencyPanel 
-                user={user} 
-                contacts={contacts} 
-                onCancel={() => setStatus('STEALTH')} 
+              <EmergencyPanel
+                user={user}
+                contacts={contacts}
+                onCancel={() => setStatus('STEALTH')}
               />
             )}
           </>
