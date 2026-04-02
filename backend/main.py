@@ -55,6 +55,8 @@ class ContactRequest(BaseModel):
 class SendAlertsRequest(BaseModel):
     userId: str
     contacts: list
+    latitude: float = 0.0
+    longitude: float = 0.0
 
 import uuid
 import json
@@ -155,14 +157,18 @@ async def send_manual_alerts(req: SendAlertsRequest):
     # Sends an SMS alert to each target contact manually
     timestamp = datetime.utcnow().isoformat() + "Z"
     
+    if req.latitude and req.longitude:
+        maps_link = f"https://maps.google.com/?q={req.latitude},{req.longitude}"
+        sms_body = maps_link
+    else:
+        sms_body = "Location unavailable. Protocol 911 Triggered."
+        
     if not req.contacts:
         print("No contacts provided from frontend. Falling back to TARGET_PHONE_NUMBER.")
-        sms_body = f"🚨 SOS! Emergency Protocol 911 Triggered!"
         if TARGET_PHONE_NUMBER:
             send_sms_alert(sms_body, TARGET_PHONE_NUMBER)
     else:
         for contact in req.contacts:
-            sms_body = f"🚨 SOS! Emergency Protocol 911 Triggered!"
             phone = contact.get('phone')
             if phone:
                 send_sms_alert(sms_body, phone)
@@ -171,7 +177,10 @@ async def send_manual_alerts(req: SendAlertsRequest):
 
 @app.post("/alert")
 async def handle_alert(alert: AlertRequest):
-    is_emergency = check_for_emergency(alert.message) or analyze_sentiment(alert.message) < -0.2
+    has_keywords = check_for_emergency(alert.message)
+    sentiment_score = analyze_sentiment(alert.message)
+    has_negative_sentiment = sentiment_score < -0.2
+    is_emergency = has_keywords or has_negative_sentiment
     timestamp = datetime.utcnow().isoformat() + "Z"
     if is_emergency:
         # Determine the trigger type
@@ -191,7 +200,7 @@ async def handle_alert(alert: AlertRequest):
         
         # Construct and send the SMS alert
         maps_link = f"https://maps.google.com/?q={alert.latitude},{alert.longitude}"
-        sms_body = f"🚨 SOS! Emergency! Loc: {maps_link}"
+        sms_body = maps_link
         
         db = load_db()
         user_contacts = [c for c in db.get("contacts", []) if c.get("userId") == alert.user_id]

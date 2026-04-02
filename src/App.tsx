@@ -279,12 +279,32 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
     setStatus('SENDING');
     if (timerRef.current) clearInterval(timerRef.current);
 
+    const getLocation = (): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { 
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0 
+        });
+      });
+    };
+
     try {
       console.log("Sending contacts:", targets);
+      let latitude = 0.0;
+      let longitude = 0.0;
+      try {
+        const position = await getLocation();
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      } catch (locErr) {
+        console.warn("Location unavailable:", locErr);
+      }
+
       await fetch(`${API_BASE}/api/alerts/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, contacts: targets }),
+        body: JSON.stringify({ userId: user.id, contacts: targets, latitude, longitude }),
       });
       setStatus('SENT');
       // Delay before returning to calculator
