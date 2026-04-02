@@ -19,6 +19,9 @@ export default defineConfig(({mode}) => {
       port: 3000,
       host: '0.0.0.0',
       hmr: process.env.DISABLE_HMR !== 'true',
+      watch: {
+        ignored: ['**/db.json']
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:5000',
