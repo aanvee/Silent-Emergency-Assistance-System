@@ -1,0 +1,7 @@
+{
+  "name": "Chameleon Protocol",
+  "description": "A dual-interface security application featuring a disguised stealth mode and an active duty authority dashboard.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
