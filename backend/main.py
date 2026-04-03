@@ -84,15 +84,19 @@ async def root():
 async def signup(req: schemas.AuthRequest, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, email=req.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="User already exists")
+        raise HTTPException(status_code=400, detail="Account already exists")
     
     return crud.create_user(db=db, req=req)
 
 @app.post("/api/auth/login", response_model=schemas.UserResponse)
 async def login(req: schemas.AuthRequest, db: Session = Depends(get_db)):
-    db_user = crud.authenticate_user(db, req=req)
+    db_user = crud.get_user_by_email(db, email=req.email)
     if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=404, detail="User not registered")
+        
+    if db_user.password != req.password:
+        raise HTTPException(status_code=401, detail="Invalid password")
+        
     return db_user
 
 @app.post("/api/contacts", response_model=schemas.ContactResponse)
@@ -198,3 +202,11 @@ async def handle_alert(alert: schemas.AlertRequest, db: Session = Depends(get_db
             "sentiment": sentiment_score,
             "timestamp": timestamp
         }
+
+@app.get("/api/alerts", response_model=list[schemas.AlertResponse])
+async def get_alerts(userId: str, db: Session = Depends(get_db)):
+    alerts = crud.get_alerts_by_receiver(db, receiver_id=userId)
+    # Clear alerts after fetching to prevent duplicate notifications during polling
+    if alerts:
+        crud.delete_alerts_by_receiver(db, receiver_id=userId)
+    return alerts

@@ -32,7 +32,50 @@ interface UserSession {
 }
 
 // --- Components ---
-const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000`;
+// --- Constants ---
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+if (!import.meta.env.VITE_API_BASE) {
+  console.log("VITE_API_BASE missing. Using default: http://localhost:8000");
+}
+
+async function safeFetch(url: string, options: RequestInit = {}) {
+  // 1. Check for offline state
+  if (!navigator.onLine) {
+    throw new Error("No internet connection. Please check your network.");
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    // 2. Clone response for robust parsing (in case of empty/non-JSON)
+    const contentType = response.headers.get("content-type");
+    let data;
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      // Handle non-JSON or empty response
+      const text = await response.text();
+      data = { detail: text || `Server Error: ${response.status}` };
+    }
+
+    if (!response.ok) {
+      throw new Error(data.detail || `Request failed [${response.status}]`);
+    }
+    return data;
+  } catch (err: any) {
+    if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+      throw new Error("Server unavailable. Please try again later.");
+    }
+    console.error(`API Call Failed [${url}]:`, err);
+    throw err;
+  }
+}
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -43,26 +86,29 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(''); // Clear previous error
+
+    // Pre-flight validation
+    if (!email.trim() || !password.trim()) {
+      setError('All fields are required');
+      return;
+    }
+
     setLoading(true);
-    setError('');
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const data = await safeFetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Authentication failed');
 
       localStorage.setItem('silent_session', JSON.stringify(data));
       onAuthSuccess(data);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
-      setLoading(false);
+      setLoading(false); // Reset loading state
     }
   };
 
@@ -130,8 +176,11 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             disabled={loading}
             className="w-full bg-primary py-4 text-on-primary text-xs font-black tracking-widest uppercase rounded-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
-            {loading ? 'Processing...' : (isLogin ? 'Establish Link' : 'Register Protocol')}
-            <ChevronRight className="w-4 h-4" />
+            {loading 
+              ? (isLogin ? 'Establishing Link...' : 'Registering Protocol...') 
+              : (isLogin ? 'Establish Link' : 'Register Protocol')
+            }
+            <ChevronRight className={`w-4 h-4 ${loading ? 'animate-pulse' : ''}`} />
           </button>
         </form>
 
@@ -149,7 +198,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
   );
 };
 
-const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { user: UserSession, existingContacts?: Contact[], onSetupComplete: () => void, onCancel?: () => void }) => {
+const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLogout }: { user: UserSession, existingContacts?: Contact[], onSetupComplete: () => void, onCancel?: () => void, onLogout: () => void }) => {
   const [contacts, setContacts] = useState<Omit<Contact, 'id'>[]>([]);
   const [savedContacts, setSavedContacts] = useState<Contact[]>(existingContacts);
   const [name, setName] = useState('');
@@ -158,7 +207,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
 
   const handleDeleteSaved = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
+      await safeFetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
       setSavedContacts(prev => prev.filter(c => c.id !== id));
     } catch (err) {
       console.error(err);
@@ -177,9 +226,8 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
     setLoading(true);
     try {
       for (const contact of contacts) {
-        await fetch(`${API_BASE}/api/contacts`, {
+        await safeFetch(`${API_BASE}/api/contacts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, ...contact }),
         });
       }
@@ -201,7 +249,15 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
         <div className="p-8 border-b border-outline-variant/10 bg-surface-container-high/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black text-on-surface tracking-tighter uppercase mb-2">Emergency Hub Setup</h2>
-            <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
+            <div className="flex gap-4 items-center">
+              <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
+              <button 
+                onClick={onLogout}
+                className="text-[10px] font-bold text-error uppercase tracking-widest hover:underline"
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
           <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
             <div className="flex flex-col">
@@ -361,9 +417,8 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
         console.warn("Location unavailable:", locErr);
       }
 
-      await fetch(`${API_BASE}/api/alerts/send`, {
+      await safeFetch(`${API_BASE}/api/alerts/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, contacts: targets, latitude, longitude }),
       });
       setStatus('SENT');
@@ -536,7 +591,7 @@ const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismis
   );
 };
 
-const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, onManageContacts: () => void }) => {
+const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () => void, onManageContacts: () => void, onLogout: () => void }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
   const [shouldResetDisplay, setShouldResetDisplay] = useState(false);
@@ -554,6 +609,7 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
       if (equation === '' && display === '911') {
         onTrigger();
         setDisplay('0');
+        setEquation(''); // Production Safety: Clear equation state
         return;
       }
 
@@ -630,6 +686,59 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleAction]);
 
+  const [isHolding, setIsHolding] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const cancelHold = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    timerRef.current = null;
+    progressIntervalRef.current = null;
+    setIsHolding(false);
+    setHoldProgress(0);
+  }, []);
+
+  const startHold = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+
+    const holdDuration = 800;
+    const intervalTime = 10;
+    let elapsed = 0;
+
+    setIsHolding(true);
+    setHoldProgress(0);
+
+    timerRef.current = setTimeout(() => {
+      // Race-condition protection: only trigger if the timer was not cleared
+      if (!timerRef.current) return;
+      onTrigger();
+      cancelHold();
+    }, holdDuration);
+
+    progressIntervalRef.current = setInterval(() => {
+      elapsed += intervalTime;
+      const newProgress = Math.min((elapsed / holdDuration) * 100, 100);
+      setHoldProgress(newProgress);
+      
+      if (elapsed >= holdDuration) {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+      }
+    }, intervalTime);
+  }, [onTrigger, cancelHold]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    };
+  }, []);
+
   const buttons = [
     { label: 'C', color: 'text-secondary' },
     { label: '+/-', color: 'text-secondary' },
@@ -655,8 +764,29 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
       >
         <div className="h-64 flex flex-col justify-end items-end p-8 bg-black/40 relative">
           <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
+            <button 
+                onMouseDown={startHold}
+                onMouseUp={cancelHold}
+                onMouseLeave={cancelHold}
+                onTouchStart={startHold}
+                onTouchEnd={cancelHold}
+                onTouchCancel={cancelHold}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-on-surface-variant hover:text-primary transition-all duration-300 relative overflow-hidden group ${isHolding ? 'scale-95' : ''}`}
+                title="Hold to Sync System"
+            >
+              <div 
+                className="absolute inset-0 bg-primary/10 transition-transform duration-10 origin-left"
+                style={{ transform: `scaleX(${holdProgress / 100})` }}
+              />
+              <Clock className={`w-3.5 h-3.5 relative z-10 ${isHolding ? 'animate-spin-slow' : ''}`} />
+              <span className="text-[10px] font-black uppercase tracking-tighter relative z-10">Quick Sync</span>
+            </button>
+            <div className="w-px h-4 bg-outline-variant/20 mx-1" />
             <button onClick={onManageContacts} className="p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer z-10" title="Manage Contacts">
               <Settings className="w-4 h-4" />
+            </button>
+            <button onClick={onLogout} className="p-2 text-on-surface-variant hover:text-error transition-colors cursor-pointer z-10" title="Sign Out">
+              <EyeOff className="w-4 h-4" />
             </button>
           </div>
           <div className="absolute top-4 right-6 flex items-center gap-2 opacity-20">
@@ -700,45 +830,87 @@ export default function App() {
 
   // WebSocket Connection for Real-Time Receiver Mode
   useEffect(() => {
-    if (!user || status === 'AUTH' || status === 'SETUP') return;
+    if (!user || !API_BASE || status === 'AUTH' || status === 'SETUP') return;
 
-    const wsBase = API_BASE.replace(/^http/, 'ws');
-    const wsUrl = `${wsBase}/ws/${user.id}`;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsBase = API_BASE.replace(/^https?:\/\//, `${wsProtocol}//`);
+    const wsUrl = `${wsBase.replace(/\/$/, '')}/ws/${user.id}`;
     let ws: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
     
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => console.log('📡 Connected to Emergency Network');
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'EMERGENCY_ALERT') {
-             console.log("🚨 INCOMING ALERT", data);
-             setIncomingAlert(data);
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => console.log('📡 Connected to Emergency Network');
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'EMERGENCY_ALERT') {
+               console.log("🚨 INCOMING ALERT (WS)", data);
+               setIncomingAlert(data);
+            }
+          } catch (err) {
+            console.error("Failed to parse incoming alert", err);
           }
-        } catch (err) {
-          console.error("Failed to parse incoming alert", err);
-        }
-      };
-      ws.onclose = () => console.log('📡 Disconnected from network');
-    } catch (e) {
-      console.warn('Real-time connection failed', e);
-    }
+        };
+        ws.onclose = () => {
+          console.log('📡 Disconnected from network. Attempting reconnection...');
+          reconnectTimeout = setTimeout(connect, 5000);
+        };
+        ws.onerror = (err) => {
+          console.warn('Real-time connection error', err);
+          ws.close();
+        };
+      } catch (e) {
+        console.warn('Real-time connection setup failed', e);
+      }
+    };
+
+    connect();
 
     return () => {
        if (ws) ws.close();
+       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
+  }, [user, status]);
+
+  // Fallback Polling Mechanism (Production Safety)
+  useEffect(() => {
+    if (!user || !API_BASE || status === 'AUTH' || status === 'SETUP') return;
+
+    const pollAlerts = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/alerts?userId=${user.id}`);
+        if (!response.ok) return;
+        
+        const alerts = await response.json();
+        if (Array.isArray(alerts) && alerts.length > 0) {
+          alerts.forEach(alert => {
+            console.log("🚨 INCOMING ALERT (POLLING)", alert);
+            // Adapt structure for UI
+            setIncomingAlert({
+              type: 'EMERGENCY_ALERT',
+              from: alert.sender_id,
+              sender_name: "Protocol Member",
+              location: { lat: alert.latitude, lng: alert.longitude },
+              message: alert.message,
+              timestamp: alert.timestamp
+            });
+          });
+        }
+      } catch (err) {
+        console.warn("Polling failed", err);
+      }
+    };
+
+    const interval = setInterval(pollAlerts, 4000);
+    return () => clearInterval(interval);
   }, [user, status]);
 
   const fetchContacts = async (userId: string) => {
     try {
-      const response = await fetch(`${API_BASE}/api/contacts?userId=${userId}`);
-      const data = await response.json();
+      const data = await safeFetch(`${API_BASE}/api/contacts?userId=${userId}`);
       
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to load contacts');
-      }
-
       // Backend returns raw array [] or [{...}, ...]
       const contactList = Array.isArray(data) ? data : (data.contacts || []);
       console.log("Loaded contacts:", contactList);
@@ -767,6 +939,19 @@ export default function App() {
     }
   }, []);
 
+  const logout = () => {
+    localStorage.removeItem('silent_session');
+    setUser(null);
+    setContacts([]);
+    setStatus('AUTH');
+  };
+
+  const handleTrigger = useCallback(() => {
+    if (status === 'EMERGENCY') return;
+    if (navigator.vibrate) navigator.vibrate(200);
+    setStatus('EMERGENCY');
+  }, [status]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -794,13 +979,14 @@ export default function App() {
             user={user}
             existingContacts={contacts}
             onSetupComplete={() => fetchContacts(user.id)}
+            onLogout={logout}
             onCancel={contacts.length > 0 ? () => setStatus('STEALTH') : undefined}
           />
         )}
 
         {(status === 'STEALTH' || status === 'EMERGENCY') && (
           <>
-            <Calculator onTrigger={() => setStatus('EMERGENCY')} onManageContacts={() => setStatus('SETUP')} />
+            <Calculator onTrigger={handleTrigger} onManageContacts={() => setStatus('SETUP')} onLogout={logout} />
             {status === 'EMERGENCY' && user && (
               <EmergencyPanel
                 user={user}
