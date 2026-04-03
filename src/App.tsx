@@ -14,7 +14,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Trash2
+  Trash2,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -54,10 +55,10 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
       });
 
       const data = await response.json();
-      if (data.error) throw new Error(data.error);
+      if (!response.ok) throw new Error(data.detail || 'Authentication failed');
 
-      localStorage.setItem('silent_session', JSON.stringify(data.user));
-      onAuthSuccess(data.user);
+      localStorage.setItem('silent_session', JSON.stringify(data));
+      onAuthSuccess(data);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
@@ -197,9 +198,32 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-2xl bg-surface-container-low rounded-3xl overflow-hidden shadow-2xl border border-outline-variant/10"
       >
-        <div className="p-8 border-b border-outline-variant/10 bg-surface-container-high/50">
-          <h2 className="text-2xl font-black text-on-surface tracking-tighter uppercase mb-2">Emergency Hub Setup</h2>
-          <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
+        <div className="p-8 border-b border-outline-variant/10 bg-surface-container-high/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-black text-on-surface tracking-tighter uppercase mb-2">Emergency Hub Setup</h2>
+            <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
+          </div>
+          <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">My Protocol ID</span>
+              <span className="text-[11px] font-mono text-on-surface-variant truncate max-w-[140px]">{user.id}</span>
+            </div>
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(user.id);
+                // Simple visual feedback
+                const btn = document.getElementById('copy-id-btn');
+                if (btn) {
+                  btn.innerText = 'COPIED';
+                  setTimeout(() => btn.innerText = 'COPY', 2000);
+                }
+              }}
+              id="copy-id-btn"
+              className="px-3 py-1.5 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary/20 transition-all active:scale-95 border border-primary/20"
+            >
+              COPY
+            </button>
+          </div>
         </div>
 
         <div className="p-8 grid md:grid-cols-2 gap-8">
@@ -221,7 +245,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant/20 rounded-xl py-3 px-12 text-sm outline-none focus:border-primary/50"
-                  placeholder="+1 (555) 000-0000"
+                  placeholder="Target User ID (Raw UUID)"
                 />
               </div>
               <button
@@ -466,6 +490,52 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
   );
 };
 
+const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismiss: () => void }) => {
+  useEffect(() => {
+    // Attempt to play an alert sound
+    const audio = new Audio('https://www.soundjay.com/buttons/beep-01a.wav');
+    audio.play().catch(e => console.log('Audio playback prevented by browser policy', e));
+
+    const intervalId = setInterval(() => {
+       audio.play().catch(e => {});
+    }, 1500);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-error/90 backdrop-blur-md">
+       <div className="absolute inset-0 bg-error animate-pulse mix-blend-overlay"></div>
+       <div className="bg-surface-container-low w-full max-w-md p-8 rounded-3xl shadow-2xl relative z-10 border border-error/50">
+          <h1 className="text-3xl font-black text-error text-center uppercase tracking-widest mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)]">🚨 EMERGENCY ALERT</h1>
+          
+          <div className="space-y-6 mb-8 bg-surface-container px-6 py-6 rounded-2xl border border-outline-variant/10">
+             <div>
+               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">From / Target ID:</span> <br/>
+               <span className="text-on-surface text-lg font-mono">{alertData.sender_name} <br/><span className="text-xs opacity-50">{alertData.from}</span></span>
+             </div>
+             <div>
+               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Priority Message:</span> <br/>
+               <span className="text-error font-black text-xl uppercase tracking-tighter">{alertData.message}</span>
+             </div>
+             
+             {alertData.location && (
+               <div>
+                  <a href={`https://maps.google.com/?q=${alertData.location.lat},${alertData.location.lng}`} target="_blank" rel="noreferrer" className="block text-center w-full py-4 bg-primary text-on-primary font-black uppercase tracking-widest rounded-xl hover:brightness-110 shadow-lg shadow-primary/20 transition-all active:scale-95 text-xs">
+                    View Live Coordinates
+                  </a>
+               </div>
+             )}
+          </div>
+
+          <button onClick={onDismiss} className="w-full py-4 bg-surface-container-highest text-on-surface-variant text-xs uppercase font-black tracking-widest rounded-xl hover:text-on-surface focus:outline-none transition-all">
+            Understood / Dismiss
+          </button>
+       </div>
+    </div>
+  );
+};
+
 const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, onManageContacts: () => void }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
@@ -626,14 +696,54 @@ export default function App() {
   const [user, setUser] = useState<UserSession | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [incomingAlert, setIncomingAlert] = useState<any>(null);
+
+  // WebSocket Connection for Real-Time Receiver Mode
+  useEffect(() => {
+    if (!user || status === 'AUTH' || status === 'SETUP') return;
+
+    const wsUrl = `ws://127.0.0.1:8000/ws/${user.id}`;
+    let ws: WebSocket;
+    
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => console.log('📡 Connected to Emergency Network');
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'EMERGENCY_ALERT') {
+             console.log("🚨 INCOMING ALERT", data);
+             setIncomingAlert(data);
+          }
+        } catch (err) {
+          console.error("Failed to parse incoming alert", err);
+        }
+      };
+      ws.onclose = () => console.log('📡 Disconnected from network');
+    } catch (e) {
+      console.warn('Real-time connection failed', e);
+    }
+
+    return () => {
+       if (ws) ws.close();
+    };
+  }, [user, status]);
 
   const fetchContacts = async (userId: string) => {
     try {
       const response = await fetch(`${API_BASE}/api/contacts?userId=${userId}`);
       const data = await response.json();
-      console.log("Loaded contacts:", data.contacts);
-      setContacts(data.contacts);
-      if (data.contacts.length === 0) {
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to load contacts');
+      }
+
+      // Backend returns raw array [] or [{...}, ...]
+      const contactList = Array.isArray(data) ? data : (data.contacts || []);
+      console.log("Loaded contacts:", contactList);
+      setContacts(contactList);
+      
+      if (contactList.length === 0) {
         setStatus('SETUP');
       } else {
         setStatus('STEALTH');
@@ -697,6 +807,12 @@ export default function App() {
                 onCancel={() => setStatus('STEALTH')}
               />
             )}
+            
+            <AnimatePresence>
+              {incomingAlert && (
+                 <IncomingAlertModal alertData={incomingAlert} onDismiss={() => setIncomingAlert(null)} />
+              )}
+            </AnimatePresence>
           </>
         )}
       </AnimatePresence>

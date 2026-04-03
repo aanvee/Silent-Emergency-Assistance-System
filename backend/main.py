@@ -1,31 +1,57 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 import os
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
 from textblob import TextBlob
-from twilio.rest import Client
 from dotenv import load_dotenv
+
+import models, schemas, crud
+from database import SessionLocal, engine
+
+# Create the database tables
+models.Base.metadata.create_all(bind=engine)
 
 load_dotenv(override=True)
 
 app = FastAPI()
 
-# --- Twilio Configuration ---
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-TARGET_PHONE_NUMBER = os.getenv("TARGET_PHONE_NUMBER")
-
-# Initialize Twilio Client once globally
-twilio_client = None
-if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+# Dependency to get the database session
+def get_db():
+    db = SessionLocal()
     try:
-        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        print("Twilio client initialized successfully.")
-    except Exception as e:
-        print(f"Failed to initialize Twilio client: {e}")
+        yield db
+    finally:
+        db.close()
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[str, WebSocket] = {}
+
+    async def connect(self, ws: WebSocket, user_id: str):
+        await ws.accept()
+        self.active_connections[user_id] = ws
+        print(f"User {user_id} connected via WS. Active: {len(self.active_connections)}")
+
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+            print(f"User {user_id} disconnected via WS.")
+
+    async def send_personal_message(self, message: dict, user_id: str):
+        if user_id in self.active_connections:
+            ws = self.active_connections[user_id]
+            try:
+                await ws.send_json(message)
+                print(f"WS payload sent to {user_id}")
+            except Exception as e:
+                print(f"WS send error for {user_id}: {e}")
+                self.disconnect(user_id)
+        else:
+            print(f"Simulated alert sent (Contact {user_id} offline)")
+
+manager = ConnectionManager()
 
 # Allow all origins
 app.add_middleware(
@@ -36,42 +62,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Models ---
-class AlertRequest(BaseModel):
-    user_id: str
-    latitude: float
-    longitude: float
-    message: str
-
-class AuthRequest(BaseModel):
-    email: str
-    password: str
-
-class ContactRequest(BaseModel):
-    userId: str
-    name: str
-    phone: str
-
-class SendAlertsRequest(BaseModel):
-    userId: str
-    contacts: list
-    latitude: float = 0.0
-    longitude: float = 0.0
-
-import uuid
-import json
-
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db.json")
-
-def load_db():
-    if not os.path.exists(DB_PATH):
-        return {"users": [], "contacts": []}
-    with open(DB_PATH, "r") as f:
-        return json.load(f)
-
-def save_db(data):
-    with open(DB_PATH, "w") as f:
-        json.dump(data, f, indent=2)
 
 # --- Utilities ---
 def check_for_emergency(message: str) -> bool:
@@ -85,109 +75,80 @@ def analyze_sentiment(message: str) -> float:
     return analysis.sentiment.polarity
 
 def send_sms_alert(message_body: str, to_number: str):
-    """
-    Sends an SMS using Twilio. If credentials fail (401), it logs the error 
-    but allows the API to return a success response to the frontend.
-    """
-    if not twilio_client:
-        print(f"Twilio client is not initialized. Skipping SMS to {to_number}.")
-        return
-        
-    # Ensure phone number formatting for Twilio (E.164 format)
-    # If it's a 10 digit number without a country code, add +91 (India default)
-    clean_number = "".join(filter(str.isdigit, to_number))
-    if not to_number.startswith("+"):
-        if len(clean_number) == 10:
-            to_number = "+91" + clean_number
-        else:
-            to_number = "+" + clean_number
-
-    try:
-        message = twilio_client.messages.create(
-            body=message_body,
-            from_=TWILIO_PHONE_NUMBER,
-            to=to_number
-        )
-        print(f"SMS Alert sent to {to_number} successfully! Message SID: {message.sid}")
-    except Exception as e:
-        print(f"Failed to send SMS Alert to {to_number}: {e}")
+    # Deprecated for WebSocket flow but kept structurally if needed
+    pass
 
 # --- Endpoints ---
 @app.get("/")
 async def root():
     return {"message": "Backend running"}
 
-@app.post("/api/auth/signup")
-async def signup(req: AuthRequest):
-    db = load_db()
-    for u in db.get("users", []):
-        if u.get("email") == req.email:
-            return {"error": "User already exists"}
+@app.post("/api/auth/signup", response_model=schemas.UserResponse)
+async def signup(req: schemas.AuthRequest, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, email=req.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="User already exists")
     
-    user_id = str(uuid.uuid4())
-    db.setdefault("users", []).append({"id": user_id, "email": req.email, "password": req.password})
-    save_db(db)
-    return {"user": {"id": user_id, "email": req.email}}
+    return crud.create_user(db=db, req=req)
 
-@app.post("/api/auth/login")
-async def login(req: AuthRequest):
-    db = load_db()
-    for u in db.get("users", []):
-        if u.get("email") == req.email and u.get("password") == req.password:
-            return {"user": {"id": u["id"], "email": u["email"]}}
-    return {"error": "Invalid email or password"}
+@app.post("/api/auth/login", response_model=schemas.UserResponse)
+async def login(req: schemas.AuthRequest, db: Session = Depends(get_db)):
+    db_user = crud.authenticate_user(db, req=req)
+    if not db_user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return db_user
 
-@app.post("/api/contacts")
-async def add_contact(req: ContactRequest):
-    db = load_db()
-    new_contact = {"id": str(uuid.uuid4()), "userId": req.userId, "name": req.name, "phone": req.phone}
-    db.setdefault("contacts", []).append(new_contact)
-    save_db(db)
-    return {"status": "Contact added", "contact": new_contact}
+@app.post("/api/contacts", response_model=schemas.ContactResponse)
+async def add_contact(req: schemas.ContactRequest, db: Session = Depends(get_db)):
+    return crud.create_contact(db=db, req=req)
 
-@app.get("/api/contacts")
-async def get_contacts(userId: str):
-    db = load_db()
-    user_contacts = [c for c in db.get("contacts", []) if c.get("userId") == userId]
-    return {"contacts": user_contacts}
+@app.get("/api/contacts", response_model=list[schemas.ContactResponse])
+async def get_contacts(userId: str, db: Session = Depends(get_db)):
+    contacts = crud.get_contacts_by_user(db, user_id=userId)
+    return contacts
 
 @app.delete("/api/contacts/{contact_id}")
-async def delete_contact(contact_id: str):
-    db = load_db()
-    contacts = db.get("contacts", [])
-    new_contacts = [c for c in contacts if c.get("id") != contact_id]
-    if len(contacts) != len(new_contacts):
-        db["contacts"] = new_contacts
-        save_db(db)
+async def delete_contact(contact_id: str, db: Session = Depends(get_db)):
+    success = crud.delete_contact(db, contact_id=contact_id)
+    if success:
         return {"status": "Contact deleted"}
-    return {"status": "Contact not found"}
+    raise HTTPException(status_code=404, detail="Contact not found")
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(user_id)
 
 @app.post("/api/alerts/send")
-async def send_manual_alerts(req: SendAlertsRequest):
+async def send_manual_alerts(req: schemas.SendAlertsRequest, db: Session = Depends(get_db)):
     print("Received contacts:", req.contacts)
-    # Sends an SMS alert to each target contact manually
     timestamp = datetime.utcnow().isoformat() + "Z"
     
-    if req.latitude and req.longitude:
-        maps_link = f"https://maps.google.com/?q={req.latitude},{req.longitude}"
-        sms_body = maps_link
-    else:
-        sms_body = "Location unavailable. Protocol 911 Triggered."
-        
-    if not req.contacts:
-        print("No contacts provided from frontend. Falling back to TARGET_PHONE_NUMBER.")
-        if TARGET_PHONE_NUMBER:
-            send_sms_alert(sms_body, TARGET_PHONE_NUMBER)
-    else:
+    if req.contacts:
         for contact in req.contacts:
-            phone = contact.get('phone')
-            if phone:
-                send_sms_alert(sms_body, phone)
+            recipient_user_id = contact.get('phone')
+            if recipient_user_id:
+                # Optional: log the alert in DB
+                crud.create_alert(db, req.userId, recipient_user_id, "EMERGENCY PROTOCOL ACTIVATED.", req.latitude, req.longitude, timestamp)
+                
+                alert_payload = {
+                    "type": "EMERGENCY_ALERT",
+                    "from": req.userId,
+                    "sender_name": "Protocol Member",
+                    "location": {"lat": req.latitude, "lng": req.longitude},
+                    "message": "EMERGENCY PROTOCOL ACTIVATED.",
+                    "timestamp": timestamp
+                }
+                await manager.send_personal_message(alert_payload, recipient_user_id)
                 
     return {"status": "Alerts Dispatched"}
 
 @app.post("/alert")
-async def handle_alert(alert: AlertRequest):
+async def handle_alert(alert: schemas.AlertRequest, db: Session = Depends(get_db)):
     has_keywords = check_for_emergency(alert.message)
     sentiment_score = analyze_sentiment(alert.message)
     has_negative_sentiment = sentiment_score < -0.2
@@ -209,22 +170,23 @@ async def handle_alert(alert: AlertRequest):
         print(f"Sentiment: {sentiment_score:.2f} (Polarity)")
         print("="*40 + "\n")
         
-        # Construct and send the SMS alert
-        maps_link = f"https://maps.google.com/?q={alert.latitude},{alert.longitude}"
-        sms_body = maps_link
-        
-        db = load_db()
-        user_contacts = [c for c in db.get("contacts", []) if c.get("userId") == alert.user_id]
+        # Push via Websocket
+        user_contacts = crud.get_contacts_by_user(db, user_id=alert.user_id)
         
         for contact in user_contacts:
-            phone = contact.get("phone")
-            if phone:
-                send_sms_alert(sms_body, phone)
-        
-        # If no contacts, optionally fallback to TARGET_PHONE_NUMBER
-        if not user_contacts and TARGET_PHONE_NUMBER:
-            print("No contacts found in db, sending to fallback TARGET_PHONE_NUMBER")
-            send_sms_alert(sms_body, TARGET_PHONE_NUMBER)
+            recipient_user_id = contact.phone
+            if recipient_user_id:
+                crud.create_alert(db, alert.user_id, recipient_user_id, alert.message, alert.latitude, alert.longitude, timestamp)
+                
+                alert_payload = {
+                    "type": "EMERGENCY_ALERT",
+                    "from": alert.user_id,
+                    "sender_name": "Protocol Member",
+                    "location": {"lat": alert.latitude, "lng": alert.longitude},
+                    "message": alert.message,
+                    "timestamp": timestamp
+                }
+                await manager.send_personal_message(alert_payload, recipient_user_id)
         
         return {
             "status": "Alert sent",

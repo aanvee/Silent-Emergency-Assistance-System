@@ -1,11 +1,4 @@
 {
   "users": [],
-  "contacts": [
-    {
-      "id": "ca037423-9eb1-4681-a172-8161ff901be4",
-      "userId": "6fab84df-8e2c-40aa-815d-f0f33f67e9d3",
-      "name": "janmejai",
-      "phone": "8126703360"
-    }
-  ]
+  "contacts": []
 }

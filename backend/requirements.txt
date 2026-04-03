@@ -3,3 +3,5 @@ uvicorn
 textblob
 twilio
 python-dotenv
+websockets
+sqlalchemy
