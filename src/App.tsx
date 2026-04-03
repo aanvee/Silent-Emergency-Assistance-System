@@ -32,7 +32,7 @@ interface UserSession {
 }
 
 // --- Components ---
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000`;
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -702,7 +702,8 @@ export default function App() {
   useEffect(() => {
     if (!user || status === 'AUTH' || status === 'SETUP') return;
 
-    const wsUrl = `ws://127.0.0.1:8000/ws/${user.id}`;
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const wsUrl = `${wsBase}/ws/${user.id}`;
     let ws: WebSocket;
     
     try {

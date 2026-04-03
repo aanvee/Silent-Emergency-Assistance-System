@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 textblob
-twilio
 python-dotenv
 websockets
 sqlalchemy
+gunicorn
+uvicorn[standard]

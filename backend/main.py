@@ -74,9 +74,6 @@ def analyze_sentiment(message: str) -> float:
     analysis = TextBlob(message)
     return analysis.sentiment.polarity
 
-def send_sms_alert(message_body: str, to_number: str):
-    # Deprecated for WebSocket flow but kept structurally if needed
-    pass
 
 # --- Endpoints ---
 @app.get("/")
