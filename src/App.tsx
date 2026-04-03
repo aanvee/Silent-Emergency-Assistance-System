@@ -67,17 +67,36 @@ async function safeFetch(url: string, options: RequestInit = {}) {
     }
 
     if (!response.ok) {
-      throw new Error(data.detail || `Request failed [${response.status}]`);
+      // 3. Robust message extraction for standardized error reporting
+      let message = `Request failed [${response.status}]`;
+      
+      if (typeof data.detail === 'string') {
+        message = data.detail;
+      } else if (data.detail && typeof data.detail === 'object') {
+        // Handle FastAPI validation errors or nested detail objects
+        message = data.detail.message || data.detail.msg || JSON.stringify(data.detail);
+      } else if (data.message) {
+        message = data.message;
+      } else if (data.msg) {
+        message = data.msg;
+      }
+
+      throw new Error(message);
     }
     return data;
   } catch (err: any) {
     if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
       throw new Error("Server unavailable. Please try again later.");
     }
+    // Ensure all thrown errors have a message string
+    if (!(err instanceof Error)) {
+      throw new Error(typeof err === 'string' ? err : 'An unexpected error occurred');
+    }
     console.error(`API Call Failed [${url}]:`, err);
     throw err;
   }
 }
+
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -201,7 +220,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
               className="p-3 bg-error/10 border-l-4 border-error text-error text-xs flex items-center gap-2"
             >
               <AlertCircle className="w-3 h-3" />
-              {error}
+              {typeof error === 'string' ? error : JSON.stringify(error)}
             </motion.div>
           )}
 
@@ -237,14 +256,16 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
   const [savedContacts, setSavedContacts] = useState<Contact[]>(existingContacts);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleDeleteSaved = async (id: string) => {
+    setError('');
     try {
       await safeFetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
       setSavedContacts(prev => prev.filter(c => c.id !== id));
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete contact');
     }
   };
 
@@ -266,8 +287,8 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
         });
       }
       onSetupComplete();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save contacts');
     } finally {
       setLoading(false);
     }
@@ -395,6 +416,15 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
           </div>
         </div>
 
+        {error && (
+          <div className="px-8 pb-4">
+            <div className="p-3 bg-error/10 border-l-4 border-error text-error text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+               <AlertCircle className="w-3 h-3" />
+               {typeof error === 'string' ? error : JSON.stringify(error)}
+            </div>
+          </div>
+        )}
+
         <div className="p-8 bg-surface-container-high border-t border-outline-variant/10 flex gap-4">
           {onCancel && (
             <button
@@ -459,8 +489,8 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
       setStatus('SENT');
       // Delay before returning to calculator
       setTimeout(() => onCancel(), 3000);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setAlertError(err.message || 'Emergency dispatch failed');
       setStatus('IDLE');
     }
   }, [user.id, status, onCancel]);
@@ -555,7 +585,8 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
                 exit={{ opacity: 0, height: 0 }}
                 className="text-error text-center text-[10px] font-bold uppercase tracking-widest animate-pulse"
               >
-                {alertError}
+                <AlertCircle className="w-3 h-3" />
+                {typeof alertError === 'string' ? alertError : JSON.stringify(alertError)}
               </motion.div>
             )}
           </AnimatePresence>
@@ -862,6 +893,7 @@ export default function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [incomingAlert, setIncomingAlert] = useState<any>(null);
+  const [globalError, setGlobalError] = useState('');
 
   // WebSocket Connection for Real-Time Receiver Mode
   useEffect(() => {
@@ -956,8 +988,8 @@ export default function App() {
       } else {
         setStatus('STEALTH');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setGlobalError(err.message || 'System synchronization failed');
     } finally {
       setLoading(false);
     }
@@ -1001,6 +1033,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-on-surface font-sans selection:bg-primary/20">
+      {globalError && (
+        <div className="fixed top-0 left-0 right-0 z-[1000] p-4 bg-error text-on-error text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-4">
+          <span>⚠️ {globalError}</span>
+          <button onClick={() => setGlobalError('')} className="bg-white/20 px-3 py-1 rounded hover:bg-white/30 transition-colors">Dismiss</button>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {status === 'AUTH' && (
           <AuthUI onAuthSuccess={(u) => {

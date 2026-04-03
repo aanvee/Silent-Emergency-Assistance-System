@@ -1,4 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -14,6 +16,19 @@ models.Base.metadata.create_all(bind=engine)
 load_dotenv(override=True)
 
 app = FastAPI()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Flatten Pydantic errors into a single human-readable string for the UI
+    errors = exc.errors()
+    if errors:
+        err = errors[0]
+        msg = err.get("msg", "Invalid input format")
+        field = ".".join([str(loc) for loc in err.get("loc", []) if loc != "body"])
+        detail = f"Input Error ({field}): {msg}" if field else msg
+    else:
+        detail = "Format validation failed"
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 # Dependency to get the database session
 def get_db():
