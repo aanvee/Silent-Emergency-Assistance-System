@@ -2,12 +2,16 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class AuthRequest(BaseModel):
+    name: Optional[str] = None
     email: str
+    phone: str
     password: str
 
 class UserResponse(BaseModel):
     id: str
+    name: Optional[str] = None
     email: str
+    phone: str
 
     class Config:
         from_attributes = True

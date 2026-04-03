@@ -28,7 +28,9 @@ interface Contact {
 }
 interface UserSession {
   id: string;
+  name?: string;
   email: string;
+  phone: string;
 }
 
 // --- Components ---
@@ -79,7 +81,9 @@ async function safeFetch(url: string, options: RequestInit = {}) {
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -131,6 +135,21 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Full Name</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                placeholder="John Doe"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
@@ -141,6 +160,21 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
                 placeholder="sentinel@protocol.id"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Mobile Number</label>
+            <div className="relative">
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+              <input
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                placeholder="+1 (555) 000-0000"
               />
             </div>
           </div>
@@ -176,8 +210,8 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             disabled={loading}
             className="w-full bg-primary py-4 text-on-primary text-xs font-black tracking-widest uppercase rounded-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
-            {loading 
-              ? (isLogin ? 'Establishing Link...' : 'Registering Protocol...') 
+            {loading
+              ? (isLogin ? 'Establishing Link...' : 'Registering Protocol...')
               : (isLogin ? 'Establish Link' : 'Register Protocol')
             }
             <ChevronRight className={`w-4 h-4 ${loading ? 'animate-pulse' : ''}`} />
@@ -251,7 +285,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
             <h2 className="text-2xl font-black text-on-surface tracking-tighter uppercase mb-2">Emergency Hub Setup</h2>
             <div className="flex gap-4 items-center">
               <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
-              <button 
+              <button
                 onClick={onLogout}
                 className="text-[10px] font-bold text-error uppercase tracking-widest hover:underline"
               >
@@ -261,17 +295,18 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
           </div>
           <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">My Protocol ID</span>
-              <span className="text-[11px] font-mono text-on-surface-variant truncate max-w-[140px]">{user.id}</span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">Protocol ID (Mobile)</span>
+              <span className="text-sm font-mono text-on-surface-variant">{user.phone || 'N/A'}</span>
             </div>
-            <button 
+            <button
               onClick={() => {
-                navigator.clipboard.writeText(user.id);
-                // Simple visual feedback
-                const btn = document.getElementById('copy-id-btn');
-                if (btn) {
-                  btn.innerText = 'COPIED';
-                  setTimeout(() => btn.innerText = 'COPY', 2000);
+                if (user.phone) {
+                  navigator.clipboard.writeText(user.phone);
+                  const btn = document.getElementById('copy-id-btn');
+                  if (btn) {
+                    btn.innerText = 'COPIED';
+                    setTimeout(() => btn.innerText = 'COPY', 2000);
+                  }
                 }
               }}
               id="copy-id-btn"
@@ -301,7 +336,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant/20 rounded-xl py-3 px-12 text-sm outline-none focus:border-primary/50"
-                  placeholder="Target User ID (Raw UUID)"
+                  placeholder="Contact Mobile Number"
                 />
               </div>
               <button
@@ -552,7 +587,7 @@ const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismis
     audio.play().catch(e => console.log('Audio playback prevented by browser policy', e));
 
     const intervalId = setInterval(() => {
-       audio.play().catch(e => {});
+      audio.play().catch(e => { });
     }, 1500);
 
     return () => clearInterval(intervalId);
@@ -560,33 +595,33 @@ const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismis
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-error/90 backdrop-blur-md">
-       <div className="absolute inset-0 bg-error animate-pulse mix-blend-overlay"></div>
-       <div className="bg-surface-container-low w-full max-w-md p-8 rounded-3xl shadow-2xl relative z-10 border border-error/50">
-          <h1 className="text-3xl font-black text-error text-center uppercase tracking-widest mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)]">🚨 EMERGENCY ALERT</h1>
-          
-          <div className="space-y-6 mb-8 bg-surface-container px-6 py-6 rounded-2xl border border-outline-variant/10">
-             <div>
-               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">From / Target ID:</span> <br/>
-               <span className="text-on-surface text-lg font-mono">{alertData.sender_name} <br/><span className="text-xs opacity-50">{alertData.from}</span></span>
-             </div>
-             <div>
-               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Priority Message:</span> <br/>
-               <span className="text-error font-black text-xl uppercase tracking-tighter">{alertData.message}</span>
-             </div>
-             
-             {alertData.location && (
-               <div>
-                  <a href={`https://maps.google.com/?q=${alertData.location.lat},${alertData.location.lng}`} target="_blank" rel="noreferrer" className="block text-center w-full py-4 bg-primary text-on-primary font-black uppercase tracking-widest rounded-xl hover:brightness-110 shadow-lg shadow-primary/20 transition-all active:scale-95 text-xs">
-                    View Live Coordinates
-                  </a>
-               </div>
-             )}
+      <div className="absolute inset-0 bg-error animate-pulse mix-blend-overlay"></div>
+      <div className="bg-surface-container-low w-full max-w-md p-8 rounded-3xl shadow-2xl relative z-10 border border-error/50">
+        <h1 className="text-3xl font-black text-error text-center uppercase tracking-widest mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)]">🚨 EMERGENCY ALERT</h1>
+
+        <div className="space-y-6 mb-8 bg-surface-container px-6 py-6 rounded-2xl border border-outline-variant/10">
+          <div>
+            <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">From / Target ID:</span> <br />
+            <span className="text-on-surface text-lg font-mono">{alertData.sender_name} <br /><span className="text-xs opacity-50">{alertData.from}</span></span>
+          </div>
+          <div>
+            <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Priority Message:</span> <br />
+            <span className="text-error font-black text-xl uppercase tracking-tighter">{alertData.message}</span>
           </div>
 
-          <button onClick={onDismiss} className="w-full py-4 bg-surface-container-highest text-on-surface-variant text-xs uppercase font-black tracking-widest rounded-xl hover:text-on-surface focus:outline-none transition-all">
-            Understood / Dismiss
-          </button>
-       </div>
+          {alertData.location && (
+            <div>
+              <a href={`https://maps.google.com/?q=${alertData.location.lat},${alertData.location.lng}`} target="_blank" rel="noreferrer" className="block text-center w-full py-4 bg-primary text-on-primary font-black uppercase tracking-widest rounded-xl hover:brightness-110 shadow-lg shadow-primary/20 transition-all active:scale-95 text-xs">
+                View Live Coordinates
+              </a>
+            </div>
+          )}
+        </div>
+
+        <button onClick={onDismiss} className="w-full py-4 bg-surface-container-highest text-on-surface-variant text-xs uppercase font-black tracking-widest rounded-xl hover:text-on-surface focus:outline-none transition-all">
+          Understood / Dismiss
+        </button>
+      </div>
     </div>
   );
 };
@@ -722,7 +757,7 @@ const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () =
       elapsed += intervalTime;
       const newProgress = Math.min((elapsed / holdDuration) * 100, 100);
       setHoldProgress(newProgress);
-      
+
       if (elapsed >= holdDuration) {
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
@@ -764,17 +799,17 @@ const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () =
       >
         <div className="h-64 flex flex-col justify-end items-end p-8 bg-black/40 relative">
           <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
-            <button 
-                onMouseDown={startHold}
-                onMouseUp={cancelHold}
-                onMouseLeave={cancelHold}
-                onTouchStart={startHold}
-                onTouchEnd={cancelHold}
-                onTouchCancel={cancelHold}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-on-surface-variant hover:text-primary transition-all duration-300 relative overflow-hidden group ${isHolding ? 'scale-95' : ''}`}
-                title="Hold to Sync System"
+            <button
+              onMouseDown={startHold}
+              onMouseUp={cancelHold}
+              onMouseLeave={cancelHold}
+              onTouchStart={startHold}
+              onTouchEnd={cancelHold}
+              onTouchCancel={cancelHold}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-on-surface-variant hover:text-primary transition-all duration-300 relative overflow-hidden group ${isHolding ? 'scale-95' : ''}`}
+              title="Hold to Sync System"
             >
-              <div 
+              <div
                 className="absolute inset-0 bg-primary/10 transition-transform duration-10 origin-left"
                 style={{ transform: `scaleX(${holdProgress / 100})` }}
               />
@@ -837,7 +872,7 @@ export default function App() {
     const wsUrl = `${wsBase.replace(/\/$/, '')}/ws/${user.id}`;
     let ws: WebSocket;
     let reconnectTimeout: NodeJS.Timeout;
-    
+
     const connect = () => {
       try {
         ws = new WebSocket(wsUrl);
@@ -846,8 +881,8 @@ export default function App() {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'EMERGENCY_ALERT') {
-               console.log("🚨 INCOMING ALERT (WS)", data);
-               setIncomingAlert(data);
+              console.log("🚨 INCOMING ALERT (WS)", data);
+              setIncomingAlert(data);
             }
           } catch (err) {
             console.error("Failed to parse incoming alert", err);
@@ -869,8 +904,8 @@ export default function App() {
     connect();
 
     return () => {
-       if (ws) ws.close();
-       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, [user, status]);
 
@@ -882,7 +917,7 @@ export default function App() {
       try {
         const response = await fetch(`${API_BASE}/api/alerts?userId=${user.id}`);
         if (!response.ok) return;
-        
+
         const alerts = await response.json();
         if (Array.isArray(alerts) && alerts.length > 0) {
           alerts.forEach(alert => {
@@ -910,12 +945,12 @@ export default function App() {
   const fetchContacts = async (userId: string) => {
     try {
       const data = await safeFetch(`${API_BASE}/api/contacts?userId=${userId}`);
-      
+
       // Backend returns raw array [] or [{...}, ...]
       const contactList = Array.isArray(data) ? data : (data.contacts || []);
       console.log("Loaded contacts:", contactList);
       setContacts(contactList);
-      
+
       if (contactList.length === 0) {
         setStatus('SETUP');
       } else {
@@ -994,10 +1029,10 @@ export default function App() {
                 onCancel={() => setStatus('STEALTH')}
               />
             )}
-            
+
             <AnimatePresence>
               {incomingAlert && (
-                 <IncomingAlertModal alertData={incomingAlert} onDismiss={() => setIncomingAlert(null)} />
+                <IncomingAlertModal alertData={incomingAlert} onDismiss={() => setIncomingAlert(null)} />
               )}
             </AnimatePresence>
           </>

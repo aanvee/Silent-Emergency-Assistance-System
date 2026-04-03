@@ -5,11 +5,19 @@ import uuid
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
+def get_user_by_phone(db: Session, phone: str):
+    return db.query(models.User).filter(models.User.phone == phone).first()
+
 def authenticate_user(db: Session, req: schemas.AuthRequest):
-    return db.query(models.User).filter(models.User.email == req.email, models.User.password == req.password).first()
+    return db.query(models.User).filter(
+        models.User.name == req.name,
+        models.User.email == req.email, 
+        models.User.phone == req.phone, 
+        models.User.password == req.password
+    ).first()
 
 def create_user(db: Session, req: schemas.AuthRequest):
-    db_user = models.User(email=req.email, password=req.password)
+    db_user = models.User(name=req.name, email=req.email, phone=req.phone, password=req.password)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

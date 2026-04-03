@@ -1,8 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-import os
-import uuid
 from datetime import datetime
 from textblob import TextBlob
 from dotenv import load_dotenv
@@ -133,13 +131,27 @@ async def send_manual_alerts(req: schemas.SendAlertsRequest, db: Session = Depen
         for contact in req.contacts:
             recipient_user_id = contact.get('phone')
             if recipient_user_id:
+                # Look up sender info for payload
+                sender_user = db.query(models.User).filter(models.User.id == req.userId).first()
+                sender_name = sender_user.name if sender_user else "Protocol Member"
+                sender_phone = sender_user.phone if sender_user else "N/A"
+
+                # Check if it's a phone number and needs resolution
+                if "-" not in recipient_user_id and len(recipient_user_id) >= 10:
+                    target_user = crud.get_user_by_phone(db, phone=recipient_user_id)
+                    if target_user:
+                        recipient_user_id = target_user.id
+                    else:
+                        print(f"Warning: No user found for phone {recipient_user_id}")
+                        continue
+                        
                 # Optional: log the alert in DB
                 crud.create_alert(db, req.userId, recipient_user_id, "EMERGENCY PROTOCOL ACTIVATED.", req.latitude, req.longitude, timestamp)
                 
                 alert_payload = {
                     "type": "EMERGENCY_ALERT",
-                    "from": req.userId,
-                    "sender_name": "Protocol Member",
+                    "from": sender_phone,
+                    "sender_name": sender_name,
                     "location": {"lat": req.latitude, "lng": req.longitude},
                     "message": "EMERGENCY PROTOCOL ACTIVATED.",
                     "timestamp": timestamp
@@ -177,12 +189,26 @@ async def handle_alert(alert: schemas.AlertRequest, db: Session = Depends(get_db
         for contact in user_contacts:
             recipient_user_id = contact.phone
             if recipient_user_id:
+                # Check if it's a phone number and needs resolution
+                if "-" not in recipient_user_id and len(recipient_user_id) >= 10:
+                    target_user = crud.get_user_by_phone(db, phone=recipient_user_id)
+                    if target_user:
+                        recipient_user_id = target_user.id
+                    else:
+                        print(f"Warning: No user found for phone {recipient_user_id}")
+                        continue
+
+                # Look up sender info for payload
+                sender_user = db.query(models.User).filter(models.User.id == alert.user_id).first()
+                sender_name = sender_user.name if sender_user else "Protocol Member"
+                sender_phone = sender_user.phone if sender_user else "N/A"
+
                 crud.create_alert(db, alert.user_id, recipient_user_id, alert.message, alert.latitude, alert.longitude, timestamp)
                 
                 alert_payload = {
                     "type": "EMERGENCY_ALERT",
-                    "from": alert.user_id,
-                    "sender_name": "Protocol Member",
+                    "from": sender_phone,
+                    "sender_name": sender_name,
                     "location": {"lat": alert.latitude, "lng": alert.longitude},
                     "message": alert.message,
                     "timestamp": timestamp
