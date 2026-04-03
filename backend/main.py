@@ -1,6 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -16,19 +14,6 @@ models.Base.metadata.create_all(bind=engine)
 load_dotenv(override=True)
 
 app = FastAPI()
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # Flatten Pydantic errors into a single human-readable string for the UI
-    errors = exc.errors()
-    if errors:
-        err = errors[0]
-        msg = err.get("msg", "Invalid input format")
-        field = ".".join([str(loc) for loc in err.get("loc", []) if loc != "body"])
-        detail = f"Input Error ({field}): {msg}" if field else msg
-    else:
-        detail = "Format validation failed"
-    return JSONResponse(status_code=422, content={"detail": detail})
 
 # Dependency to get the database session
 def get_db():
@@ -95,21 +80,22 @@ async def root():
 
 @app.post("/api/auth/signup", response_model=schemas.UserResponse)
 async def signup(req: schemas.AuthRequest, db: Session = Depends(get_db)):
-    db_user = crud.get_user_by_email(db, email=req.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Account already exists")
+    db_user_email = crud.get_user_by_email(db, email=req.email)
+    if db_user_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    if req.phone:
+        db_user_phone = crud.get_user_by_phone(db, phone=req.phone)
+        if db_user_phone:
+            raise HTTPException(status_code=400, detail="Phone number already registered")
     
     return crud.create_user(db=db, req=req)
 
 @app.post("/api/auth/login", response_model=schemas.UserResponse)
 async def login(req: schemas.AuthRequest, db: Session = Depends(get_db)):
-    db_user = crud.get_user_by_email(db, email=req.email)
+    db_user = crud.authenticate_user(db, req=req)
     if not db_user:
-        raise HTTPException(status_code=404, detail="User not registered")
-        
-    if db_user.password != req.password:
-        raise HTTPException(status_code=401, detail="Invalid password")
-        
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     return db_user
 
 @app.post("/api/contacts", response_model=schemas.ContactResponse)
@@ -243,11 +229,3 @@ async def handle_alert(alert: schemas.AlertRequest, db: Session = Depends(get_db
             "sentiment": sentiment_score,
             "timestamp": timestamp
         }
-
-@app.get("/api/alerts", response_model=list[schemas.AlertResponse])
-async def get_alerts(userId: str, db: Session = Depends(get_db)):
-    alerts = crud.get_alerts_by_receiver(db, receiver_id=userId)
-    # Clear alerts after fetching to prevent duplicate notifications during polling
-    if alerts:
-        crud.delete_alerts_by_receiver(db, receiver_id=userId)
-    return alerts

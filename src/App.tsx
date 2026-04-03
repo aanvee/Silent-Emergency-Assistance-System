@@ -34,69 +34,7 @@ interface UserSession {
 }
 
 // --- Components ---
-// --- Constants ---
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-if (!import.meta.env.VITE_API_BASE) {
-  console.log("VITE_API_BASE missing. Using default: http://localhost:8000");
-}
-
-async function safeFetch(url: string, options: RequestInit = {}) {
-  // 1. Check for offline state
-  if (!navigator.onLine) {
-    throw new Error("No internet connection. Please check your network.");
-  }
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
-
-    // 2. Clone response for robust parsing (in case of empty/non-JSON)
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      // Handle non-JSON or empty response
-      const text = await response.text();
-      data = { detail: text || `Server Error: ${response.status}` };
-    }
-
-    if (!response.ok) {
-      // 3. Robust message extraction for standardized error reporting
-      let message = `Request failed [${response.status}]`;
-      
-      if (typeof data.detail === 'string') {
-        message = data.detail;
-      } else if (data.detail && typeof data.detail === 'object') {
-        // Handle FastAPI validation errors or nested detail objects
-        message = data.detail.message || data.detail.msg || JSON.stringify(data.detail);
-      } else if (data.message) {
-        message = data.message;
-      } else if (data.msg) {
-        message = data.msg;
-      }
-
-      throw new Error(message);
-    }
-    return data;
-  } catch (err: any) {
-    if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
-      throw new Error("Server unavailable. Please try again later.");
-    }
-    // Ensure all thrown errors have a message string
-    if (!(err instanceof Error)) {
-      throw new Error(typeof err === 'string' ? err : 'An unexpected error occurred');
-    }
-    console.error(`API Call Failed [${url}]:`, err);
-    throw err;
-  }
-}
-
+const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000`;
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -109,29 +47,31 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(''); // Clear previous error
-
-    // Pre-flight validation
-    if (!email.trim() || !password.trim()) {
-      setError('All fields are required');
-      return;
-    }
-
     setLoading(true);
+    setError('');
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const data = await safeFetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name, 
+          email, 
+          phone, 
+          password 
+        }),
       });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Authentication failed');
 
       localStorage.setItem('silent_session', JSON.stringify(data));
       onAuthSuccess(data);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
-      setLoading(false); // Reset loading state
+      setLoading(false);
     }
   };
 
@@ -220,7 +160,7 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
               className="p-3 bg-error/10 border-l-4 border-error text-error text-xs flex items-center gap-2"
             >
               <AlertCircle className="w-3 h-3" />
-              {typeof error === 'string' ? error : JSON.stringify(error)}
+              {error}
             </motion.div>
           )}
 
@@ -229,11 +169,8 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             disabled={loading}
             className="w-full bg-primary py-4 text-on-primary text-xs font-black tracking-widest uppercase rounded-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
-            {loading
-              ? (isLogin ? 'Establishing Link...' : 'Registering Protocol...')
-              : (isLogin ? 'Establish Link' : 'Register Protocol')
-            }
-            <ChevronRight className={`w-4 h-4 ${loading ? 'animate-pulse' : ''}`} />
+            {loading ? 'Processing...' : (isLogin ? 'Establish Link' : 'Register Protocol')}
+            <ChevronRight className="w-4 h-4" />
           </button>
         </form>
 
@@ -251,21 +188,19 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
   );
 };
 
-const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLogout }: { user: UserSession, existingContacts?: Contact[], onSetupComplete: () => void, onCancel?: () => void, onLogout: () => void }) => {
+const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { user: UserSession, existingContacts?: Contact[], onSetupComplete: () => void, onCancel?: () => void }) => {
   const [contacts, setContacts] = useState<Omit<Contact, 'id'>[]>([]);
   const [savedContacts, setSavedContacts] = useState<Contact[]>(existingContacts);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleDeleteSaved = async (id: string) => {
-    setError('');
     try {
-      await safeFetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
       setSavedContacts(prev => prev.filter(c => c.id !== id));
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete contact');
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -281,14 +216,15 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
     setLoading(true);
     try {
       for (const contact of contacts) {
-        await safeFetch(`${API_BASE}/api/contacts`, {
+        await fetch(`${API_BASE}/api/contacts`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, ...contact }),
         });
       }
       onSetupComplete();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save contacts');
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -304,22 +240,14 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
         <div className="p-8 border-b border-outline-variant/10 bg-surface-container-high/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black text-on-surface tracking-tighter uppercase mb-2">Emergency Hub Setup</h2>
-            <div className="flex gap-4 items-center">
-              <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
-              <button
-                onClick={onLogout}
-                className="text-[10px] font-bold text-error uppercase tracking-widest hover:underline"
-              >
-                Sign Out
-              </button>
-            </div>
+            <p className="text-on-surface-variant text-sm">Synchronize your priority notification circle.</p>
           </div>
           <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
             <div className="flex flex-col">
               <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">Protocol ID (Mobile)</span>
               <span className="text-sm font-mono text-on-surface-variant">{user.phone || 'N/A'}</span>
             </div>
-            <button
+            <button 
               onClick={() => {
                 if (user.phone) {
                   navigator.clipboard.writeText(user.phone);
@@ -416,15 +344,6 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel, onLog
           </div>
         </div>
 
-        {error && (
-          <div className="px-8 pb-4">
-            <div className="p-3 bg-error/10 border-l-4 border-error text-error text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-               <AlertCircle className="w-3 h-3" />
-               {typeof error === 'string' ? error : JSON.stringify(error)}
-            </div>
-          </div>
-        )}
-
         <div className="p-8 bg-surface-container-high border-t border-outline-variant/10 flex gap-4">
           {onCancel && (
             <button
@@ -482,15 +401,16 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
         console.warn("Location unavailable:", locErr);
       }
 
-      await safeFetch(`${API_BASE}/api/alerts/send`, {
+      await fetch(`${API_BASE}/api/alerts/send`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, contacts: targets, latitude, longitude }),
       });
       setStatus('SENT');
       // Delay before returning to calculator
       setTimeout(() => onCancel(), 3000);
-    } catch (err: any) {
-      setAlertError(err.message || 'Emergency dispatch failed');
+    } catch (err) {
+      console.error(err);
       setStatus('IDLE');
     }
   }, [user.id, status, onCancel]);
@@ -585,8 +505,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
                 exit={{ opacity: 0, height: 0 }}
                 className="text-error text-center text-[10px] font-bold uppercase tracking-widest animate-pulse"
               >
-                <AlertCircle className="w-3 h-3" />
-                {typeof alertError === 'string' ? alertError : JSON.stringify(alertError)}
+                {alertError}
               </motion.div>
             )}
           </AnimatePresence>
@@ -618,7 +537,7 @@ const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismis
     audio.play().catch(e => console.log('Audio playback prevented by browser policy', e));
 
     const intervalId = setInterval(() => {
-      audio.play().catch(e => { });
+       audio.play().catch(e => {});
     }, 1500);
 
     return () => clearInterval(intervalId);
@@ -626,38 +545,38 @@ const IncomingAlertModal = ({ alertData, onDismiss }: { alertData: any, onDismis
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-error/90 backdrop-blur-md">
-      <div className="absolute inset-0 bg-error animate-pulse mix-blend-overlay"></div>
-      <div className="bg-surface-container-low w-full max-w-md p-8 rounded-3xl shadow-2xl relative z-10 border border-error/50">
-        <h1 className="text-3xl font-black text-error text-center uppercase tracking-widest mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)]">🚨 EMERGENCY ALERT</h1>
-
-        <div className="space-y-6 mb-8 bg-surface-container px-6 py-6 rounded-2xl border border-outline-variant/10">
-          <div>
-            <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">From / Target ID:</span> <br />
-            <span className="text-on-surface text-lg font-mono">{alertData.sender_name} <br /><span className="text-xs opacity-50">{alertData.from}</span></span>
+       <div className="absolute inset-0 bg-error animate-pulse mix-blend-overlay"></div>
+       <div className="bg-surface-container-low w-full max-w-md p-8 rounded-3xl shadow-2xl relative z-10 border border-error/50">
+          <h1 className="text-3xl font-black text-error text-center uppercase tracking-widest mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)]">🚨 EMERGENCY ALERT</h1>
+          
+          <div className="space-y-6 mb-8 bg-surface-container px-6 py-6 rounded-2xl border border-outline-variant/10">
+             <div>
+               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">From / Target ID:</span> <br/>
+               <span className="text-on-surface text-lg font-mono">{alertData.sender_name} <br/><span className="text-xs opacity-50">{alertData.from}</span></span>
+             </div>
+             <div>
+               <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Priority Message:</span> <br/>
+               <span className="text-error font-black text-xl uppercase tracking-tighter">{alertData.message}</span>
+             </div>
+             
+             {alertData.location && (
+               <div>
+                  <a href={`https://maps.google.com/?q=${alertData.location.lat},${alertData.location.lng}`} target="_blank" rel="noreferrer" className="block text-center w-full py-4 bg-primary text-on-primary font-black uppercase tracking-widest rounded-xl hover:brightness-110 shadow-lg shadow-primary/20 transition-all active:scale-95 text-xs">
+                    View Live Coordinates
+                  </a>
+               </div>
+             )}
           </div>
-          <div>
-            <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Priority Message:</span> <br />
-            <span className="text-error font-black text-xl uppercase tracking-tighter">{alertData.message}</span>
-          </div>
 
-          {alertData.location && (
-            <div>
-              <a href={`https://maps.google.com/?q=${alertData.location.lat},${alertData.location.lng}`} target="_blank" rel="noreferrer" className="block text-center w-full py-4 bg-primary text-on-primary font-black uppercase tracking-widest rounded-xl hover:brightness-110 shadow-lg shadow-primary/20 transition-all active:scale-95 text-xs">
-                View Live Coordinates
-              </a>
-            </div>
-          )}
-        </div>
-
-        <button onClick={onDismiss} className="w-full py-4 bg-surface-container-highest text-on-surface-variant text-xs uppercase font-black tracking-widest rounded-xl hover:text-on-surface focus:outline-none transition-all">
-          Understood / Dismiss
-        </button>
-      </div>
+          <button onClick={onDismiss} className="w-full py-4 bg-surface-container-highest text-on-surface-variant text-xs uppercase font-black tracking-widest rounded-xl hover:text-on-surface focus:outline-none transition-all">
+            Understood / Dismiss
+          </button>
+       </div>
     </div>
   );
 };
 
-const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () => void, onManageContacts: () => void, onLogout: () => void }) => {
+const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, onManageContacts: () => void }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
   const [shouldResetDisplay, setShouldResetDisplay] = useState(false);
@@ -675,7 +594,6 @@ const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () =
       if (equation === '' && display === '911') {
         onTrigger();
         setDisplay('0');
-        setEquation(''); // Production Safety: Clear equation state
         return;
       }
 
@@ -752,59 +670,6 @@ const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () =
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleAction]);
 
-  const [isHolding, setIsHolding] = useState(false);
-  const [holdProgress, setHoldProgress] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const cancelHold = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    timerRef.current = null;
-    progressIntervalRef.current = null;
-    setIsHolding(false);
-    setHoldProgress(0);
-  }, []);
-
-  const startHold = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-
-    const holdDuration = 800;
-    const intervalTime = 10;
-    let elapsed = 0;
-
-    setIsHolding(true);
-    setHoldProgress(0);
-
-    timerRef.current = setTimeout(() => {
-      // Race-condition protection: only trigger if the timer was not cleared
-      if (!timerRef.current) return;
-      onTrigger();
-      cancelHold();
-    }, holdDuration);
-
-    progressIntervalRef.current = setInterval(() => {
-      elapsed += intervalTime;
-      const newProgress = Math.min((elapsed / holdDuration) * 100, 100);
-      setHoldProgress(newProgress);
-
-      if (elapsed >= holdDuration) {
-        if (progressIntervalRef.current) {
-          clearInterval(progressIntervalRef.current);
-          progressIntervalRef.current = null;
-        }
-      }
-    }, intervalTime);
-  }, [onTrigger, cancelHold]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    };
-  }, []);
-
   const buttons = [
     { label: 'C', color: 'text-secondary' },
     { label: '+/-', color: 'text-secondary' },
@@ -830,29 +695,8 @@ const Calculator = ({ onTrigger, onManageContacts, onLogout }: { onTrigger: () =
       >
         <div className="h-64 flex flex-col justify-end items-end p-8 bg-black/40 relative">
           <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
-            <button
-              onMouseDown={startHold}
-              onMouseUp={cancelHold}
-              onMouseLeave={cancelHold}
-              onTouchStart={startHold}
-              onTouchEnd={cancelHold}
-              onTouchCancel={cancelHold}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-on-surface-variant hover:text-primary transition-all duration-300 relative overflow-hidden group ${isHolding ? 'scale-95' : ''}`}
-              title="Hold to Sync System"
-            >
-              <div
-                className="absolute inset-0 bg-primary/10 transition-transform duration-10 origin-left"
-                style={{ transform: `scaleX(${holdProgress / 100})` }}
-              />
-              <Clock className={`w-3.5 h-3.5 relative z-10 ${isHolding ? 'animate-spin-slow' : ''}`} />
-              <span className="text-[10px] font-black uppercase tracking-tighter relative z-10">Quick Sync</span>
-            </button>
-            <div className="w-px h-4 bg-outline-variant/20 mx-1" />
             <button onClick={onManageContacts} className="p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer z-10" title="Manage Contacts">
               <Settings className="w-4 h-4" />
-            </button>
-            <button onClick={onLogout} className="p-2 text-on-surface-variant hover:text-error transition-colors cursor-pointer z-10" title="Sign Out">
-              <EyeOff className="w-4 h-4" />
             </button>
           </div>
           <div className="absolute top-4 right-6 flex items-center gap-2 opacity-20">
@@ -893,103 +737,60 @@ export default function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [incomingAlert, setIncomingAlert] = useState<any>(null);
-  const [globalError, setGlobalError] = useState('');
 
   // WebSocket Connection for Real-Time Receiver Mode
   useEffect(() => {
-    if (!user || !API_BASE || status === 'AUTH' || status === 'SETUP') return;
+    if (!user || status === 'AUTH' || status === 'SETUP') return;
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsBase = API_BASE.replace(/^https?:\/\//, `${wsProtocol}//`);
-    const wsUrl = `${wsBase.replace(/\/$/, '')}/ws/${user.id}`;
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const wsUrl = `${wsBase}/ws/${user.id}`;
     let ws: WebSocket;
-    let reconnectTimeout: NodeJS.Timeout;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket(wsUrl);
-        ws.onopen = () => console.log('📡 Connected to Emergency Network');
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'EMERGENCY_ALERT') {
-              console.log("🚨 INCOMING ALERT (WS)", data);
-              setIncomingAlert(data);
-            }
-          } catch (err) {
-            console.error("Failed to parse incoming alert", err);
+    
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => console.log('📡 Connected to Emergency Network');
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'EMERGENCY_ALERT') {
+             console.log("🚨 INCOMING ALERT", data);
+             setIncomingAlert(data);
           }
-        };
-        ws.onclose = () => {
-          console.log('📡 Disconnected from network. Attempting reconnection...');
-          reconnectTimeout = setTimeout(connect, 5000);
-        };
-        ws.onerror = (err) => {
-          console.warn('Real-time connection error', err);
-          ws.close();
-        };
-      } catch (e) {
-        console.warn('Real-time connection setup failed', e);
-      }
-    };
-
-    connect();
+        } catch (err) {
+          console.error("Failed to parse incoming alert", err);
+        }
+      };
+      ws.onclose = () => console.log('📡 Disconnected from network');
+    } catch (e) {
+      console.warn('Real-time connection failed', e);
+    }
 
     return () => {
-      if (ws) ws.close();
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+       if (ws) ws.close();
     };
-  }, [user, status]);
-
-  // Fallback Polling Mechanism (Production Safety)
-  useEffect(() => {
-    if (!user || !API_BASE || status === 'AUTH' || status === 'SETUP') return;
-
-    const pollAlerts = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/alerts?userId=${user.id}`);
-        if (!response.ok) return;
-
-        const alerts = await response.json();
-        if (Array.isArray(alerts) && alerts.length > 0) {
-          alerts.forEach(alert => {
-            console.log("🚨 INCOMING ALERT (POLLING)", alert);
-            // Adapt structure for UI
-            setIncomingAlert({
-              type: 'EMERGENCY_ALERT',
-              from: alert.sender_id,
-              sender_name: "Protocol Member",
-              location: { lat: alert.latitude, lng: alert.longitude },
-              message: alert.message,
-              timestamp: alert.timestamp
-            });
-          });
-        }
-      } catch (err) {
-        console.warn("Polling failed", err);
-      }
-    };
-
-    const interval = setInterval(pollAlerts, 4000);
-    return () => clearInterval(interval);
   }, [user, status]);
 
   const fetchContacts = async (userId: string) => {
     try {
-      const data = await safeFetch(`${API_BASE}/api/contacts?userId=${userId}`);
+      const response = await fetch(`${API_BASE}/api/contacts?userId=${userId}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to load contacts');
+      }
 
       // Backend returns raw array [] or [{...}, ...]
       const contactList = Array.isArray(data) ? data : (data.contacts || []);
       console.log("Loaded contacts:", contactList);
       setContacts(contactList);
-
+      
       if (contactList.length === 0) {
         setStatus('SETUP');
       } else {
         setStatus('STEALTH');
       }
-    } catch (err: any) {
-      setGlobalError(err.message || 'System synchronization failed');
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -1006,19 +807,6 @@ export default function App() {
     }
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem('silent_session');
-    setUser(null);
-    setContacts([]);
-    setStatus('AUTH');
-  };
-
-  const handleTrigger = useCallback(() => {
-    if (status === 'EMERGENCY') return;
-    if (navigator.vibrate) navigator.vibrate(200);
-    setStatus('EMERGENCY');
-  }, [status]);
-
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -1033,12 +821,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-on-surface font-sans selection:bg-primary/20">
-      {globalError && (
-        <div className="fixed top-0 left-0 right-0 z-[1000] p-4 bg-error text-on-error text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-4">
-          <span>⚠️ {globalError}</span>
-          <button onClick={() => setGlobalError('')} className="bg-white/20 px-3 py-1 rounded hover:bg-white/30 transition-colors">Dismiss</button>
-        </div>
-      )}
       <AnimatePresence mode="wait">
         {status === 'AUTH' && (
           <AuthUI onAuthSuccess={(u) => {
@@ -1052,14 +834,13 @@ export default function App() {
             user={user}
             existingContacts={contacts}
             onSetupComplete={() => fetchContacts(user.id)}
-            onLogout={logout}
             onCancel={contacts.length > 0 ? () => setStatus('STEALTH') : undefined}
           />
         )}
 
         {(status === 'STEALTH' || status === 'EMERGENCY') && (
           <>
-            <Calculator onTrigger={handleTrigger} onManageContacts={() => setStatus('SETUP')} onLogout={logout} />
+            <Calculator onTrigger={() => setStatus('EMERGENCY')} onManageContacts={() => setStatus('SETUP')} />
             {status === 'EMERGENCY' && user && (
               <EmergencyPanel
                 user={user}
@@ -1067,10 +848,10 @@ export default function App() {
                 onCancel={() => setStatus('STEALTH')}
               />
             )}
-
+            
             <AnimatePresence>
               {incomingAlert && (
-                <IncomingAlertModal alertData={incomingAlert} onDismiss={() => setIncomingAlert(null)} />
+                 <IncomingAlertModal alertData={incomingAlert} onDismiss={() => setIncomingAlert(null)} />
               )}
             </AnimatePresence>
           </>
