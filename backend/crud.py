@@ -54,3 +54,10 @@ def create_alert(db: Session, sender_id: str, receiver_id: str, message: str, la
     db.commit()
     db.refresh(db_alert)
     return db_alert
+
+def get_alerts_by_receiver(db: Session, receiver_id: str):
+    return db.query(models.Alert).filter(models.Alert.receiver_id == receiver_id).all()
+
+def delete_alerts_by_receiver(db: Session, receiver_id: str):
+    db.query(models.Alert).filter(models.Alert.receiver_id == receiver_id).delete()
+    db.commit()

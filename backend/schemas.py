@@ -41,3 +41,15 @@ class AlertRequest(BaseModel):
     latitude: float
     longitude: float
     message: str
+
+class AlertResponse(BaseModel):
+    id: str
+    sender_id: str
+    receiver_id: str
+    message: str
+    latitude: float
+    longitude: float
+    timestamp: str
+
+    class Config:
+        from_attributes = True
