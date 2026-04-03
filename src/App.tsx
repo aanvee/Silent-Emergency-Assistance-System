@@ -242,38 +242,38 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
                 </div>
               ) : (
                 <>
-                {savedContacts.map((c) => (
-                  <motion.div
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    key={c.id}
-                    className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/5 flex justify-between items-center opacity-70"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-on-surface">{c.name}</div>
-                      <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
-                    </div>
-                    <button onClick={() => handleDeleteSaved(c.id)} className="text-error/50 hover:text-error transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </motion.div>
-                ))}
-                {contacts.map((c, i) => (
-                  <motion.div
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    key={`new-${i}`}
-                    className="p-4 bg-surface-container-high rounded-xl border border-primary/20 flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-on-surface">{c.name} <span className="text-[10px] text-primary ml-1">(New)</span></div>
-                      <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
-                    </div>
-                    <button onClick={() => setContacts(prev => prev.filter((_, idx) => idx !== i))} className="text-error/50 hover:text-error transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </motion.div>
-                ))}
+                  {savedContacts.map((c) => (
+                    <motion.div
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      key={c.id}
+                      className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/5 flex justify-between items-center opacity-70"
+                    >
+                      <div>
+                        <div className="text-sm font-bold text-on-surface">{c.name}</div>
+                        <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
+                      </div>
+                      <button onClick={() => handleDeleteSaved(c.id)} className="text-error/50 hover:text-error transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  ))}
+                  {contacts.map((c, i) => (
+                    <motion.div
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      key={`new-${i}`}
+                      className="p-4 bg-surface-container-high rounded-xl border border-primary/20 flex justify-between items-center"
+                    >
+                      <div>
+                        <div className="text-sm font-bold text-on-surface">{c.name} <span className="text-[10px] text-primary ml-1">(New)</span></div>
+                        <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
+                      </div>
+                      <button onClick={() => setContacts(prev => prev.filter((_, idx) => idx !== i))} className="text-error/50 hover:text-error transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  ))}
                 </>
               )}
             </div>
@@ -317,10 +317,10 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
 
     const getLocation = (): Promise<GeolocationPosition> => {
       return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { 
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
           timeout: 15000,
-          maximumAge: 0 
+          maximumAge: 0
         });
       });
     };
@@ -679,11 +679,11 @@ export default function App() {
         )}
 
         {status === 'SETUP' && user && (
-          <SetupUI 
-            user={user} 
-            existingContacts={contacts} 
-            onSetupComplete={() => fetchContacts(user.id)} 
-            onCancel={contacts.length > 0 ? () => setStatus('STEALTH') : undefined} 
+          <SetupUI
+            user={user}
+            existingContacts={contacts}
+            onSetupComplete={() => fetchContacts(user.id)}
+            onCancel={contacts.length > 0 ? () => setStatus('STEALTH') : undefined}
           />
         )}
 
