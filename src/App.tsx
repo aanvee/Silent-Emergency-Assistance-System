@@ -28,7 +28,9 @@ interface Contact {
 }
 interface UserSession {
   id: string;
+  name?: string;
   email: string;
+  phone: string;
 }
 
 // --- Components ---
@@ -36,7 +38,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.host
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,7 +55,12 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ 
+          name, 
+          email, 
+          phone, 
+          password 
+        }),
       });
 
       const data = await response.json();
@@ -85,6 +94,21 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Full Name</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                placeholder="John Doe"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
@@ -95,6 +119,21 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
                 placeholder="sentinel@protocol.id"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Mobile Number</label>
+            <div className="relative">
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+              <input
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                placeholder="+1 (555) 000-0000"
               />
             </div>
           </div>
@@ -205,17 +244,18 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
           </div>
           <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">My Protocol ID</span>
-              <span className="text-[11px] font-mono text-on-surface-variant truncate max-w-[140px]">{user.id}</span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">Protocol ID (Mobile)</span>
+              <span className="text-sm font-mono text-on-surface-variant">{user.phone || 'N/A'}</span>
             </div>
             <button 
               onClick={() => {
-                navigator.clipboard.writeText(user.id);
-                // Simple visual feedback
-                const btn = document.getElementById('copy-id-btn');
-                if (btn) {
-                  btn.innerText = 'COPIED';
-                  setTimeout(() => btn.innerText = 'COPY', 2000);
+                if (user.phone) {
+                  navigator.clipboard.writeText(user.phone);
+                  const btn = document.getElementById('copy-id-btn');
+                  if (btn) {
+                    btn.innerText = 'COPIED';
+                    setTimeout(() => btn.innerText = 'COPY', 2000);
+                  }
                 }
               }}
               id="copy-id-btn"
@@ -245,7 +285,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant/20 rounded-xl py-3 px-12 text-sm outline-none focus:border-primary/50"
-                  placeholder="Target User ID (Raw UUID)"
+                  placeholder="Contact Mobile Number"
                 />
               </div>
               <button
