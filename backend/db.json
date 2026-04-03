@@ -1,11 +1,4 @@
 {
   "users": [],
-  "contacts": [
-    {
-      "id": "144cf9db-69a3-4374-9a59-cc76d6414cb3",
-      "userId": "d7a169cc-1c1a-42ba-94b6-6315426981ef",
-      "name": "Main Contact",
-      "phone": "+918126703360"
-    }
-  ]
+  "contacts": []
 }

@@ -148,11 +148,21 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
   );
 };
 
-const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete: () => void }) => {
+const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { user: UserSession, existingContacts?: Contact[], onSetupComplete: () => void, onCancel?: () => void }) => {
   const [contacts, setContacts] = useState<Omit<Contact, 'id'>[]>([]);
+  const [savedContacts, setSavedContacts] = useState<Contact[]>(existingContacts);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleDeleteSaved = async (id: string) => {
+    try {
+      await fetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
+      setSavedContacts(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleAdd = () => {
     if (!name || !phone) return;
@@ -162,7 +172,7 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
   };
 
   const handleSave = async () => {
-    if (contacts.length === 0) return;
+    if (contacts.length === 0 && savedContacts.length === 0) return;
     setLoading(true);
     try {
       for (const contact of contacts) {
@@ -226,37 +236,63 @@ const SetupUI = ({ user, onSetupComplete }: { user: UserSession, onSetupComplete
           <div className="space-y-6">
             <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Protocol Circle</h3>
             <div className="space-y-3 h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-              {contacts.length === 0 ? (
+              {contacts.length === 0 && savedContacts.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-on-surface-variant/30 italic text-xs">
                   No contacts initialized
                 </div>
               ) : (
-                contacts.map((c, i) => (
+                <>
+                {savedContacts.map((c) => (
                   <motion.div
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    key={i}
-                    className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/5 flex justify-between items-center"
+                    key={c.id}
+                    className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/5 flex justify-between items-center opacity-70"
                   >
                     <div>
                       <div className="text-sm font-bold text-on-surface">{c.name}</div>
+                      <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
+                    </div>
+                    <button onClick={() => handleDeleteSaved(c.id)} className="text-error/50 hover:text-error transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                ))}
+                {contacts.map((c, i) => (
+                  <motion.div
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    key={`new-${i}`}
+                    className="p-4 bg-surface-container-high rounded-xl border border-primary/20 flex justify-between items-center"
+                  >
+                    <div>
+                      <div className="text-sm font-bold text-on-surface">{c.name} <span className="text-[10px] text-primary ml-1">(New)</span></div>
                       <div className="text-[10px] text-on-surface-variant font-mono">{c.phone}</div>
                     </div>
                     <button onClick={() => setContacts(prev => prev.filter((_, idx) => idx !== i))} className="text-error/50 hover:text-error transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </motion.div>
-                ))
+                ))}
+                </>
               )}
             </div>
           </div>
         </div>
 
-        <div className="p-8 bg-surface-container-high border-t border-outline-variant/10">
+        <div className="p-8 bg-surface-container-high border-t border-outline-variant/10 flex gap-4">
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="px-6 py-4 text-xs font-black tracking-widest uppercase rounded-xl transition-all border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-highest"
+            >
+              Cancel
+            </button>
+          )}
           <button
             onClick={handleSave}
-            disabled={contacts.length === 0 || loading}
-            className={`w-full py-4 text-xs font-black tracking-widest uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${contacts.length > 0 ? 'bg-primary text-on-primary hover:brightness-110 shadow-lg shadow-primary/10' : 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed'}`}
+            disabled={(contacts.length === 0 && savedContacts.length === 0) || loading}
+            className={`flex-1 py-4 text-xs font-black tracking-widest uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${(contacts.length > 0 || savedContacts.length > 0) ? 'bg-primary text-on-primary hover:brightness-110 shadow-lg shadow-primary/10' : 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed'}`}
           >
             {loading ? 'Initializing...' : 'Save and Deploy System'}
             <CheckCircle2 className="w-4 h-4" />
@@ -316,10 +352,11 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
   }, [user.id, status, onCancel]);
 
   useEffect(() => {
+    if (status !== 'IDLE') return;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          sendAlerts(contacts);
+          clearInterval(timerRef.current!);
           return 0;
         }
         return prev - 1;
@@ -329,7 +366,14 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [contacts, sendAlerts]);
+  }, [status]);
+
+  useEffect(() => {
+    if (timeLeft === 0 && status === 'IDLE') {
+      // Forward to ALL contacts when timer runs out, as requested
+      sendAlerts(contacts);
+    }
+  }, [timeLeft, status, contacts, sendAlerts]);
 
   const handleManualSend = () => {
     if (selectedIds.length === 0) {
@@ -422,7 +466,7 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
   );
 };
 
-const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
+const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, onManageContacts: () => void }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
   const [shouldResetDisplay, setShouldResetDisplay] = useState(false);
@@ -540,6 +584,11 @@ const Calculator = ({ onTrigger }: { onTrigger: () => void }) => {
         className="w-full max-w-md bg-surface-container-low rounded-[2rem] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.5)] border border-outline-variant/5"
       >
         <div className="h-64 flex flex-col justify-end items-end p-8 bg-black/40 relative">
+          <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
+            <button onClick={onManageContacts} className="p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer z-10" title="Manage Contacts">
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
           <div className="absolute top-4 right-6 flex items-center gap-2 opacity-20">
             <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Protocol V.911</span>
           </div>
@@ -630,12 +679,17 @@ export default function App() {
         )}
 
         {status === 'SETUP' && user && (
-          <SetupUI user={user} onSetupComplete={() => fetchContacts(user.id)} />
+          <SetupUI 
+            user={user} 
+            existingContacts={contacts} 
+            onSetupComplete={() => fetchContacts(user.id)} 
+            onCancel={contacts.length > 0 ? () => setStatus('STEALTH') : undefined} 
+          />
         )}
 
         {(status === 'STEALTH' || status === 'EMERGENCY') && (
           <>
-            <Calculator onTrigger={() => setStatus('EMERGENCY')} />
+            <Calculator onTrigger={() => setStatus('EMERGENCY')} onManageContacts={() => setStatus('SETUP')} />
             {status === 'EMERGENCY' && user && (
               <EmergencyPanel
                 user={user}

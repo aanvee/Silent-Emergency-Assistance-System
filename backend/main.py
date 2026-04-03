@@ -151,6 +151,17 @@ async def get_contacts(userId: str):
     user_contacts = [c for c in db.get("contacts", []) if c.get("userId") == userId]
     return {"contacts": user_contacts}
 
+@app.delete("/api/contacts/{contact_id}")
+async def delete_contact(contact_id: str):
+    db = load_db()
+    contacts = db.get("contacts", [])
+    new_contacts = [c for c in contacts if c.get("id") != contact_id]
+    if len(contacts) != len(new_contacts):
+        db["contacts"] = new_contacts
+        save_db(db)
+        return {"status": "Contact deleted"}
+    return {"status": "Contact not found"}
+
 @app.post("/api/alerts/send")
 async def send_manual_alerts(req: SendAlertsRequest):
     print("Received contacts:", req.contacts)
