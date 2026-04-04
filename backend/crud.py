@@ -54,3 +54,9 @@ def create_alert(db: Session, sender_id: str, receiver_id: str, message: str, la
     db.commit()
     db.refresh(db_alert)
     return db_alert
+
+def get_alerts_by_receiver(db: Session, receiver_id: str, limit: int = 5):
+    """Fetches the last N alerts for a specific receiver."""
+    return db.query(models.Alert).filter(
+        models.Alert.receiver_id == receiver_id
+    ).order_by(models.Alert.timestamp.desc()).limit(limit).all()

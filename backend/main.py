@@ -123,41 +123,50 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     except WebSocketDisconnect:
         manager.disconnect(user_id)
 
+@app.get("/api/alerts")
+async def get_alerts(userId: str, db: Session = Depends(get_db)):
+    alerts = crud.get_alerts_by_receiver(db, receiver_id=userId)
+    return alerts
+
 @app.post("/api/alerts/send")
 async def send_manual_alerts(req: schemas.SendAlertsRequest, db: Session = Depends(get_db)):
-    print("Received contacts:", req.contacts)
+    print(f"Alert Triggered by {req.userId}. Targets: {len(req.contacts)}")
     timestamp = datetime.utcnow().isoformat() + "Z"
     
     if req.contacts:
         for contact in req.contacts:
-            recipient_user_id = contact.get('phone')
-            if recipient_user_id:
-                # Look up sender info for payload
-                sender_user = db.query(models.User).filter(models.User.id == req.userId).first()
-                sender_name = sender_user.name if sender_user else "Protocol Member"
-                sender_phone = sender_user.phone if sender_user else "N/A"
+            # The contact object from frontend has 'phone'
+            target_id = contact.get('phone')
+            if not target_id: continue
 
-                # Check if it's a phone number and needs resolution
-                if "-" not in recipient_user_id and len(recipient_user_id) >= 10:
-                    target_user = crud.get_user_by_phone(db, phone=recipient_user_id)
-                    if target_user:
-                        recipient_user_id = target_user.id
-                    else:
-                        print(f"Warning: No user found for phone {recipient_user_id}")
-                        continue
-                        
-                # Optional: log the alert in DB
-                crud.create_alert(db, req.userId, recipient_user_id, "EMERGENCY PROTOCOL ACTIVATED.", req.latitude, req.longitude, timestamp)
-                
-                alert_payload = {
-                    "type": "EMERGENCY_ALERT",
-                    "from": sender_phone,
-                    "sender_name": sender_name,
-                    "location": {"lat": req.latitude, "lng": req.longitude},
-                    "message": "EMERGENCY PROTOCOL ACTIVATED.",
-                    "timestamp": timestamp
-                }
-                await manager.send_personal_message(alert_payload, recipient_user_id)
+            # Try to resolve phone number to User ID for WebSocket delivery
+            # If target_id is already a UUID (with hyphens), we keep it
+            recipient_user_id = target_id
+            if "-" not in target_id and len(target_id) >= 10:
+                target_user = crud.get_user_by_phone(db, phone=target_id)
+                if target_user:
+                    recipient_user_id = target_user.id
+                else:
+                    print(f"⚠️ Warning: No registered user found for phone {target_id}. Alert will be logged but WebSocket delivery may fail.")
+
+            # Look up sender info for payload
+            sender_user = db.query(models.User).filter(models.User.id == req.userId).first()
+            sender_name = sender_user.name if sender_user else "Protocol Member"
+            sender_phone = sender_user.phone if sender_user else "N/A"
+
+            # 1. Log the alert in DB (so it can be polled)
+            crud.create_alert(db, req.userId, recipient_user_id, "EMERGENCY PROTOCOL ACTIVATED.", req.latitude, req.longitude, timestamp)
+            
+            # 2. Attempt Real-time delivery
+            alert_payload = {
+                "type": "EMERGENCY_ALERT",
+                "from": sender_phone,
+                "sender_name": sender_name,
+                "location": {"lat": req.latitude, "lng": req.longitude},
+                "message": "EMERGENCY PROTOCOL ACTIVATED.",
+                "timestamp": timestamp
+            }
+            await manager.send_personal_message(alert_payload, recipient_user_id)
                 
     return {"status": "Alerts Dispatched"}
 
@@ -188,33 +197,36 @@ async def handle_alert(alert: schemas.AlertRequest, db: Session = Depends(get_db
         user_contacts = crud.get_contacts_by_user(db, user_id=alert.user_id)
         
         for contact in user_contacts:
-            recipient_user_id = contact.phone
-            if recipient_user_id:
-                # Check if it's a phone number and needs resolution
-                if "-" not in recipient_user_id and len(recipient_user_id) >= 10:
-                    target_user = crud.get_user_by_phone(db, phone=recipient_user_id)
-                    if target_user:
-                        recipient_user_id = target_user.id
-                    else:
-                        print(f"Warning: No user found for phone {recipient_user_id}")
-                        continue
+            target_id = contact.phone
+            if not target_id: continue
 
-                # Look up sender info for payload
-                sender_user = db.query(models.User).filter(models.User.id == alert.user_id).first()
-                sender_name = sender_user.name if sender_user else "Protocol Member"
-                sender_phone = sender_user.phone if sender_user else "N/A"
+            # Try to resolve phone number to User ID for WebSocket delivery
+            recipient_user_id = target_id
+            if "-" not in target_id and len(target_id) >= 10:
+                target_user = crud.get_user_by_phone(db, phone=target_id)
+                if target_user:
+                    recipient_user_id = target_user.id
+                else:
+                    print(f"⚠️ Warning: No registered user found for phone {target_id}. Alert will be logged but WebSocket delivery may fail.")
 
-                crud.create_alert(db, alert.user_id, recipient_user_id, alert.message, alert.latitude, alert.longitude, timestamp)
-                
-                alert_payload = {
-                    "type": "EMERGENCY_ALERT",
-                    "from": sender_phone,
-                    "sender_name": sender_name,
-                    "location": {"lat": alert.latitude, "lng": alert.longitude},
-                    "message": alert.message,
-                    "timestamp": timestamp
-                }
-                await manager.send_personal_message(alert_payload, recipient_user_id)
+            # Look up sender info for payload
+            sender_user = db.query(models.User).filter(models.User.id == alert.user_id).first()
+            sender_name = sender_user.name if sender_user else "Protocol Member"
+            sender_phone = sender_user.phone if sender_user else "N/A"
+
+            # 1. Log the alert in DB
+            crud.create_alert(db, alert.user_id, recipient_user_id, alert.message, alert.latitude, alert.longitude, timestamp)
+            
+            # 2. Attempt Real-time delivery
+            alert_payload = {
+                "type": "EMERGENCY_ALERT",
+                "from": sender_phone,
+                "sender_name": sender_name,
+                "location": {"lat": alert.latitude, "lng": alert.longitude},
+                "message": alert.message,
+                "timestamp": timestamp
+            }
+            await manager.send_personal_message(alert_payload, recipient_user_id)
         
         return {
             "status": "Alert sent",
