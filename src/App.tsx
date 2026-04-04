@@ -624,6 +624,13 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
     }
 
     if (label === '=') {
+      // Re-adding legacy 911= trigger
+      if (equation === '' && display === '911') {
+        onTrigger();
+        setDisplay('0');
+        return;
+      }
+
       if (!equation) return;
 
       try {
@@ -752,6 +759,7 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
           <div className="absolute bottom-32 right-8 flex items-center gap-2 opacity-10">
             <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant">Protocol V.1.0</span>
           </div>
+          
 
           <div className="text-on-surface-variant text-sm font-mono tracking-wider opacity-60 mb-2 truncate max-w-full">
             {equation} {shouldResetDisplay ? '' : ''}
