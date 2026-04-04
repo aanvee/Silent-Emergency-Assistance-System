@@ -4,5 +4,6 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env
+backend/.env
 __pycache__
+app.db
