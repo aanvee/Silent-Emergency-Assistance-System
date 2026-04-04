@@ -19,6 +19,44 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+// --- Utilities ---
+const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+async function safeFetch(url: string, options: RequestInit = {}) {
+  if (!navigator.onLine) {
+    throw new Error("System is offline. Please check your connection.");
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {
+      data = text;
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.detail || data?.error || `Request failed with status ${response.status}`);
+    }
+
+    return data;
+  } catch (error: any) {
+    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+      throw new Error("Cannot reach server. Please ensure the backend is running.");
+    }
+    throw error;
+  }
+}
+
 // --- Types ---
 type AppStatus = 'AUTH' | 'SETUP' | 'STEALTH' | 'EMERGENCY';
 interface Contact {
@@ -34,7 +72,6 @@ interface UserSession {
 }
 
 // --- Components ---
-const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000`;
 
 const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -52,19 +89,14 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name, 
-          email, 
-          phone, 
-          password 
-        }),
-      });
+      const payload = isLogin 
+        ? { email, password } 
+        : { name, email, phone, password };
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Authentication failed');
+      const data = await safeFetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
       localStorage.setItem('silent_session', JSON.stringify(data));
       onAuthSuccess(data);
@@ -93,20 +125,22 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Full Name</label>
-            <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
-                placeholder="John Doe"
-              />
+          {!isLogin && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                  placeholder="John Doe"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Email Address</label>
@@ -123,20 +157,22 @@ const AuthUI = ({ onAuthSuccess }: { onAuthSuccess: (user: UserSession) => void 
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Mobile Number</label>
-            <div className="relative">
-              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-              <input
-                type="tel"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
-                placeholder="+1 (555) 000-0000"
-              />
+          {!isLogin && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Mobile Number</label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full bg-surface-container-high border border-outline-variant/20 rounded-lg py-4 px-12 text-sm focus:border-primary/50 outline-none transition-colors"
+                  placeholder="+1 (555) 000-0000"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">Access Cipher</label>
@@ -197,9 +233,9 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
 
   const handleDeleteSaved = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
+      await safeFetch(`${API_BASE}/api/contacts/${id}`, { method: 'DELETE' });
       setSavedContacts(prev => prev.filter(c => c.id !== id));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
     }
   };
@@ -216,14 +252,13 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
     setLoading(true);
     try {
       for (const contact of contacts) {
-        await fetch(`${API_BASE}/api/contacts`, {
+        await safeFetch(`${API_BASE}/api/contacts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, ...contact }),
         });
       }
       onSetupComplete();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
     } finally {
       setLoading(false);
@@ -244,7 +279,7 @@ const SetupUI = ({ user, existingContacts = [], onSetupComplete, onCancel }: { u
           </div>
           <div className="bg-surface-container-highest px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 group">
             <div className="flex flex-col">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">Protocol ID (Mobile)</span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/70">Phone Number (share this with contacts)</span>
               <span className="text-sm font-mono text-on-surface-variant">{user.phone || 'N/A'}</span>
             </div>
             <button 
@@ -401,15 +436,14 @@ const EmergencyPanel = ({ user, contacts, onCancel }: { user: UserSession, conta
         console.warn("Location unavailable:", locErr);
       }
 
-      await fetch(`${API_BASE}/api/alerts/send`, {
+      await safeFetch(`${API_BASE}/api/alerts/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, contacts: targets, latitude, longitude }),
       });
       setStatus('SENT');
       // Delay before returning to calculator
       setTimeout(() => onCancel(), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setStatus('IDLE');
     }
@@ -590,13 +624,6 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
     }
 
     if (label === '=') {
-      // STRICT TRIGGER CONDITION
-      if (equation === '' && display === '911') {
-        onTrigger();
-        setDisplay('0');
-        return;
-      }
-
       if (!equation) return;
 
       try {
@@ -686,22 +713,46 @@ const Calculator = ({ onTrigger, onManageContacts }: { onTrigger: () => void, on
     { label: '=', color: 'bg-secondary text-on-secondary font-bold' }
   ];
 
+  const lastClickRef = useRef(0);
+
+  const handlePanicClick = () => {
+    const now = Date.now();
+    if (now - lastClickRef.current < 400) {
+      onTrigger();
+    }
+    lastClickRef.current = now;
+  };
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-surface-container-low rounded-[2rem] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.5)] border border-outline-variant/5"
+        className="w-full max-w-md bg-surface-container-low rounded-[2rem] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.5)] border border-outline-variant/5 relative"
       >
         <div className="h-64 flex flex-col justify-end items-end p-8 bg-black/40 relative">
-          <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
-            <button onClick={onManageContacts} className="p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer z-10" title="Manage Contacts">
-              <Settings className="w-4 h-4" />
-            </button>
+          {/* Panic Button - Inside Top Left of Calculator */}
+          <button 
+            onClick={handlePanicClick}
+            className="absolute top-6 left-6 z-[60] w-10 h-10 rounded-full bg-surface-container-high/50 border border-outline-variant/5 flex items-center justify-center text-error/10 hover:text-error/30 hover:bg-surface-container-highest transition-all active:scale-90"
+            title="Emergency Bypass"
+          >
+            <Shield className="w-4 h-4" />
+          </button>
+
+          {/* Settings Button - Inside Top Right of Calculator */}
+          <button 
+            onClick={onManageContacts} 
+            className="absolute top-6 right-6 z-[60] w-10 h-10 rounded-full bg-surface-container-high/50 border border-outline-variant/5 flex items-center justify-center text-on-surface-variant/20 hover:text-primary hover:bg-surface-container-highest transition-all active:scale-90"
+            title="Manage Contacts"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
+          <div className="absolute bottom-32 right-8 flex items-center gap-2 opacity-10">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant">Protocol V.1.0</span>
           </div>
-          <div className="absolute top-4 right-6 flex items-center gap-2 opacity-20">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Protocol V.911</span>
-          </div>
+
           <div className="text-on-surface-variant text-sm font-mono tracking-wider opacity-60 mb-2 truncate max-w-full">
             {equation} {shouldResetDisplay ? '' : ''}
           </div>
@@ -742,7 +793,7 @@ export default function App() {
   useEffect(() => {
     if (!user || status === 'AUTH' || status === 'SETUP') return;
 
-    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const wsBase = (API_BASE || `http://${window.location.hostname}:8000`).replace(/^http/, 'ws');
     const wsUrl = `${wsBase}/ws/${user.id}`;
     let ws: WebSocket;
     
@@ -772,12 +823,7 @@ export default function App() {
 
   const fetchContacts = async (userId: string) => {
     try {
-      const response = await fetch(`${API_BASE}/api/contacts?userId=${userId}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to load contacts');
-      }
+      const data = await safeFetch(`${API_BASE}/api/contacts?userId=${userId}`);
 
       // Backend returns raw array [] or [{...}, ...]
       const contactList = Array.isArray(data) ? data : (data.contacts || []);
